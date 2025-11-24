@@ -61,6 +61,9 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
     round_next.total_deployed = 0;
     round_next.total_vaulted = 0;
     round_next.total_winnings = 0;
+    round_next.dice_results = [0; 2];
+    round_next.dice_sum = 0;
+    round_next._padding = [0; 5];
 
     // Sample random variable
     let [var_info, entropy_program] = entropy_accounts else {
@@ -110,6 +113,10 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
                 total_winnings: round.total_winnings,
                 total_minted: 0,
                 ts: clock.unix_timestamp,
+                dice_result_1: 0,
+                dice_result_2: 0,
+                dice_sum: 0,
+                _event_padding: [0; 5],
             }
             .to_bytes(),
         )?;
@@ -120,6 +127,12 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
         board.end_slot = u64::MAX;
         return Ok(());
     };
+
+    // Calculate dice roll for this round.
+    let (die1, die2, dice_sum) = round.roll_dice(r);
+    round.dice_results = [die1, die2];
+    round.dice_sum = dice_sum;
+    sol_log(&format!("Dice roll: {} + {} = {}", die1, die2, dice_sum).to_string());
 
     // Caculate admin fees.
     let total_admin_fee = round.total_deployed / 100;
@@ -150,6 +163,10 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
                 total_winnings: round.total_winnings,
                 total_minted: 0,
                 ts: clock.unix_timestamp,
+                dice_result_1: die1,
+                dice_result_2: die2,
+                dice_sum,
+                _event_padding: [0; 5],
             }
             .to_bytes(),
         )?;
@@ -253,6 +270,10 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
             total_winnings: round.total_winnings,
             total_minted: mint_amount + motherlode_mint_amount,
             ts: clock.unix_timestamp,
+            dice_result_1: die1,
+            dice_result_2: die2,
+            dice_sum,
+            _event_padding: [0; 5],
         }
         .to_bytes(),
     )?;

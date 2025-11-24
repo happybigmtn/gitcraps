@@ -53,6 +53,10 @@ pub struct ClaimORE {}
 pub struct Deploy {
     pub amount: [u8; 8],
     pub squares: [u8; 4],
+    /// Dice prediction for betting (2-12, or 0 for safe mode).
+    pub dice_prediction: u8,
+    /// Padding for alignment.
+    pub _padding: [u8; 3],
 }
 
 #[repr(C)]

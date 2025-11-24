@@ -464,15 +464,31 @@ async fn deploy(
     let amount = u64::from_str(&amount).expect("Invalid AMOUNT");
     let square_id = std::env::var("SQUARE").expect("Missing SQUARE env var");
     let square_id = u64::from_str(&square_id).expect("Invalid SQUARE");
+    // Parse dice prediction: 0 = safe mode, 2-12 = bet on sum
+    let dice_prediction = std::env::var("DICE")
+        .map(|s| u8::from_str(&s).expect("Invalid DICE prediction (0 or 2-12)"))
+        .unwrap_or(7); // Default to 7 (most likely)
+
+    if dice_prediction != 0 && (dice_prediction < 2 || dice_prediction > 12) {
+        panic!("DICE must be 0 (safe mode) or between 2 and 12");
+    }
+
     let board = get_board(rpc).await?;
     let mut squares = [false; 25];
     squares[square_id as usize] = true;
+
+    println!("Deploying {} lamports to square {} with dice prediction: {}",
+        amount, square_id,
+        if dice_prediction == 0 { "SAFE MODE".to_string() } else { format!("{}", dice_prediction) }
+    );
+
     let ix = ore_api::sdk::deploy(
         payer.pubkey(),
         payer.pubkey(),
         amount,
         board.round_id,
         squares,
+        dice_prediction,
     );
     submit_transaction(rpc, payer, &[ix]).await?;
     Ok(())
@@ -484,14 +500,30 @@ async fn deploy_all(
 ) -> Result<(), anyhow::Error> {
     let amount = std::env::var("AMOUNT").expect("Missing AMOUNT env var");
     let amount = u64::from_str(&amount).expect("Invalid AMOUNT");
+    // Parse dice prediction: 0 = safe mode, 2-12 = bet on sum
+    let dice_prediction = std::env::var("DICE")
+        .map(|s| u8::from_str(&s).expect("Invalid DICE prediction (0 or 2-12)"))
+        .unwrap_or(7); // Default to 7 (most likely)
+
+    if dice_prediction != 0 && (dice_prediction < 2 || dice_prediction > 12) {
+        panic!("DICE must be 0 (safe mode) or between 2 and 12");
+    }
+
     let board = get_board(rpc).await?;
     let squares = [true; 25];
+
+    println!("Deploying {} lamports to ALL squares with dice prediction: {}",
+        amount,
+        if dice_prediction == 0 { "SAFE MODE".to_string() } else { format!("{}", dice_prediction) }
+    );
+
     let ix = ore_api::sdk::deploy(
         payer.pubkey(),
         payer.pubkey(),
-        board.round_id,
         amount,
+        board.round_id,
         squares,
+        dice_prediction,
     );
     submit_transaction(rpc, payer, &[ix]).await?;
     Ok(())
@@ -728,12 +760,18 @@ async fn log_round(rpc: &RpcClient) -> Result<(), anyhow::Error> {
     println!("  Total deployed: {}", round.total_deployed);
     println!("  Total vaulted: {}", round.total_vaulted);
     println!("  Total winnings: {}", round.total_winnings);
+    // Dice results
+    if round.dice_sum > 0 {
+        println!("  Dice roll: {} + {} = {}",
+            round.dice_results[0], round.dice_results[1], round.dice_sum);
+        println!("  Dice multiplier (if matched): {}x",
+            Round::dice_multiplier(round.dice_sum) as f64 / 100.0);
+    } else {
+        println!("  Dice roll: (not yet rolled)");
+    }
     if let Some(rng) = rng {
         println!("  Winning square: {}", round.winning_square(rng));
     }
-    // if round.slot_hash != [0; 32] {
-    //     println!("  Winning square: {}", get_winning_square(&round.slot_hash));
-    // }
     Ok(())
 }
 
@@ -761,6 +799,16 @@ async fn log_miner(
     );
     println!("  round_id: {}", miner.round_id);
     println!("  checkpoint_id: {}", miner.checkpoint_id);
+    // Dice prediction info
+    let dice_pred = miner.dice_prediction;
+    if dice_pred == 0 {
+        println!("  dice_prediction: SAFE MODE (guaranteed ~1/6 base reward)");
+    } else if dice_pred >= 2 && dice_pred <= 12 {
+        println!("  dice_prediction: {} ({}x multiplier if correct)",
+            dice_pred, Round::dice_multiplier(dice_pred) as f64 / 100.0);
+    } else {
+        println!("  dice_prediction: {} (invalid)", dice_pred);
+    }
     println!(
         "  lifetime_rewards_sol: {} SOL",
         lamports_to_sol(miner.lifetime_rewards_sol)

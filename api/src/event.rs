@@ -48,6 +48,18 @@ pub struct ResetEvent {
 
     /// The timestamp of the event.
     pub ts: i64,
+
+    /// The first die result (1-6).
+    pub dice_result_1: u8,
+
+    /// The second die result (1-6).
+    pub dice_result_2: u8,
+
+    /// The sum of both dice (2-12).
+    pub dice_sum: u8,
+
+    /// Padding for alignment.
+    pub _event_padding: [u8; 5],
 }
 
 #[repr(C)]

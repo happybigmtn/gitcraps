@@ -49,6 +49,12 @@ pub struct Miner {
 
     /// The total amount of ORE this miner has mined across all blocks.
     pub lifetime_rewards_ore: u64,
+
+    /// The miner's dice prediction for the current round (2-12, or 0 for safe mode).
+    pub dice_prediction: u8,
+
+    /// Padding for alignment.
+    pub _padding: [u8; 7],
 }
 
 impl Miner {
