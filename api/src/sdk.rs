@@ -8,6 +8,27 @@ use crate::{
     state::*,
 };
 
+/// Initialize the program accounts (Board, Config, Treasury, Round 0).
+/// Must be called once by the program authority to set up the game.
+pub fn initialize(signer: Pubkey) -> Instruction {
+    let board_address = board_pda().0;
+    let config_address = config_pda().0;
+    let treasury_address = treasury_pda().0;
+    let round_address = round_pda(0).0;
+    Instruction {
+        program_id: crate::ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(board_address, false),
+            AccountMeta::new(config_address, false),
+            AccountMeta::new(treasury_address, false),
+            AccountMeta::new(round_address, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: Initialize {}.to_bytes(),
+    }
+}
+
 pub fn log(signer: Pubkey, msg: &[u8]) -> Instruction {
     let mut data = Log {}.to_bytes();
     data.extend_from_slice(msg);

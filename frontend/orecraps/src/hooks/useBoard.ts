@@ -51,18 +51,23 @@ const ROUND_RENT_PAYER_OFFSET = ROUND_MOTHERLODE_OFFSET + 8; // 640
 const ROUND_TOP_MINER_OFFSET = ROUND_RENT_PAYER_OFFSET + 32; // 672
 const ROUND_TOTAL_DEPLOYED_OFFSET = ROUND_TOP_MINER_OFFSET + 32 + 8; // 712
 
-function readU64(data: Buffer, offset: number): bigint {
-  return data.readBigUInt64LE(offset);
+function readU64(data: Uint8Array, offset: number): bigint {
+  // Read 8 bytes as little-endian u64
+  const view = new DataView(data.buffer, data.byteOffset + offset, 8);
+  return view.getBigUint64(0, true); // true = little-endian
 }
 
-function readPubkey(data: Buffer, offset: number): string {
-  const pubkeyBytes = data.subarray(offset, offset + 32);
+function readPubkey(data: Uint8Array, offset: number): string {
+  const pubkeyBytes = data.slice(offset, offset + 32);
   // Check if all zeros (Pubkey::default())
   if (pubkeyBytes.every((b) => b === 0)) {
     return "";
   }
-  // Simple base58-like representation for display
-  return pubkeyBytes.toString("hex").slice(0, 8) + "...";
+  // Simple hex representation for display
+  const hex = Array.from(pubkeyBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex.slice(0, 8) + "...";
 }
 
 export function useBoard() {
@@ -88,7 +93,7 @@ export function useBoard() {
         return;
       }
 
-      const boardData = Buffer.from(boardAccount.data);
+      const boardData = new Uint8Array(boardAccount.data);
       const roundId = readU64(boardData, BOARD_ROUND_ID_OFFSET);
       const roundSlots = readU64(boardData, BOARD_ROUND_SLOTS_OFFSET);
 
@@ -106,7 +111,7 @@ export function useBoard() {
       const roundAccount = await connection.getAccountInfo(roundAddress);
 
       if (roundAccount) {
-        const roundData = Buffer.from(roundAccount.data);
+        const roundData = new Uint8Array(roundAccount.data);
 
         // Parse deployed array
         const deployed: bigint[] = [];

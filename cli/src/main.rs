@@ -41,6 +41,9 @@ async fn main() {
         .expect("Missing COMMAND env var")
         .as_str()
     {
+        "initialize" => {
+            initialize(&rpc, &payer).await.unwrap();
+        }
         "automations" => {
             log_automations(&rpc).await.unwrap();
         }
@@ -124,6 +127,39 @@ async fn main() {
         }
         _ => panic!("Invalid command"),
     };
+}
+
+async fn initialize(
+    rpc: &RpcClient,
+    payer: &solana_sdk::signer::keypair::Keypair,
+) -> Result<(), anyhow::Error> {
+    println!("Initializing OreCraps program...");
+
+    // Check if already initialized
+    let board_pda = ore_api::state::board_pda();
+    if let Ok(_) = rpc.get_account(&board_pda.0).await {
+        println!("Program already initialized! Board account exists at: {}", board_pda.0);
+        return Ok(());
+    }
+
+    let ix = ore_api::sdk::initialize(payer.pubkey());
+    let sig = submit_transaction(rpc, payer, &[ix]).await?;
+    println!("Initialize transaction: {:?}", sig);
+
+    // Print the created accounts
+    let board_address = ore_api::state::board_pda().0;
+    let config_address = ore_api::state::config_pda().0;
+    let treasury_address = ore_api::state::treasury_pda().0;
+    let round_address = ore_api::state::round_pda(0).0;
+
+    println!("\nCreated accounts:");
+    println!("  Board: {}", board_address);
+    println!("  Config: {}", config_address);
+    println!("  Treasury: {}", treasury_address);
+    println!("  Round 0: {}", round_address);
+    println!("\nProgram initialized successfully!");
+
+    Ok(())
 }
 
 async fn lut(

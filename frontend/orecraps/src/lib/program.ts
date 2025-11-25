@@ -27,6 +27,15 @@ export enum OreInstruction {
   ClaimYield = 12,
 }
 
+// Convert bigint to little-endian Uint8Array
+function toLeBytes(value: bigint, length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i++) {
+    bytes[i] = Number((value >> BigInt(8 * i)) & 0xffn);
+  }
+  return bytes;
+}
+
 // Automation PDA
 export function automationPDA(authority: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
@@ -37,10 +46,9 @@ export function automationPDA(authority: PublicKey): [PublicKey, number] {
 
 // Entropy Var PDA
 export function entropyVarPDA(board: PublicKey, id: bigint): [PublicKey, number] {
-  const buffer = Buffer.alloc(8);
-  buffer.writeBigUInt64LE(id);
+  const idBytes = toLeBytes(id, 8);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("var"), board.toBuffer(), buffer],
+    [Buffer.from("var"), board.toBuffer(), idBytes],
     ENTROPY_PROGRAM_ID
   );
 }
@@ -54,15 +62,6 @@ export function squaresToMask(squares: boolean[]): bigint {
     }
   }
   return mask;
-}
-
-// Convert bigint to little-endian Uint8Array
-function toLeBytes(value: bigint, length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = Number((value >> BigInt(8 * i)) & 0xffn);
-  }
-  return bytes;
 }
 
 /**

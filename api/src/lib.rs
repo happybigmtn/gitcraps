@@ -16,4 +16,5 @@ pub mod prelude {
 
 use steel::*;
 
-declare_id!("oreV3EG1i9BEgiAJ8b177Z2S2rMarzak4NMv1kULvWv");
+// Devnet program ID
+declare_id!("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");

@@ -44,8 +44,11 @@ export function boardPDA(): [PublicKey, number] {
 }
 
 export function roundPDA(roundId: bigint): [PublicKey, number] {
-  const buffer = Buffer.alloc(8);
-  buffer.writeBigUInt64LE(roundId);
+  // Convert bigint to little-endian Uint8Array (browser-compatible)
+  const buffer = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) {
+    buffer[i] = Number((roundId >> BigInt(8 * i)) & 0xffn);
+  }
   return PublicKey.findProgramAddressSync(
     [Buffer.from("round"), buffer],
     ORE_PROGRAM_ID

@@ -5,6 +5,7 @@ use steel::*;
 pub enum OreInstruction {
     // Miner
     Automate = 0,
+    Initialize = 1,
     Checkpoint = 2,
     ClaimSOL = 3,
     ClaimORE = 4,
@@ -29,6 +30,10 @@ pub enum OreInstruction {
     NewVar = 19,
     SetAdminFee = 20,
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Initialize {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -164,6 +169,7 @@ pub struct SetSwapProgram {}
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct SetVarAddress {}
 
+instruction!(OreInstruction, Initialize);
 instruction!(OreInstruction, Automate);
 instruction!(OreInstruction, Close);
 instruction!(OreInstruction, Checkpoint);

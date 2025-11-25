@@ -7,6 +7,7 @@ mod claim_yield;
 mod close;
 mod deploy;
 mod deposit;
+mod initialize;
 mod log;
 mod new_var;
 mod recycle_sol;
@@ -28,6 +29,7 @@ use claim_yield::*;
 use close::*;
 use deploy::*;
 use deposit::*;
+use initialize::*;
 use log::*;
 use new_var::*;
 use recycle_sol::*;
@@ -52,6 +54,7 @@ pub fn process_instruction(
 
     match ix {
         // Miner
+        OreInstruction::Initialize => process_initialize(accounts, data)?,
         OreInstruction::Automate => process_automate(accounts, data)?,
         OreInstruction::Checkpoint => process_checkpoint(accounts, data)?,
         OreInstruction::ClaimSOL => process_claim_sol(accounts, data)?,
