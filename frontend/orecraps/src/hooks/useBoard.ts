@@ -189,14 +189,48 @@ export function useBoard() {
     }
   }, [connection]);
 
-  // Initial fetch and polling
+  // Calculate time remaining until round expires
+  const getTimeRemaining = useCallback(() => {
+    if (!round || !board) return null;
+    const slotsRemaining = Number(round.expiresAt) - Number(board.currentSlot);
+    return slotsRemaining * 0.4; // Convert to seconds (400ms per slot)
+  }, [round, board]);
+
+  // Initial fetch and adaptive polling
   useEffect(() => {
     fetchBoard();
 
-    // Poll every 5 seconds
-    const interval = setInterval(fetchBoard, 5000);
-    return () => clearInterval(interval);
-  }, [fetchBoard]);
+    // Start with 5 second polling
+    let pollInterval = 5000;
+
+    const poll = () => {
+      fetchBoard();
+
+      // Increase polling frequency when close to round end
+      const timeRemaining = getTimeRemaining();
+      if (timeRemaining !== null && timeRemaining <= 15 && timeRemaining > 0) {
+        // Poll every 1 second when <15 seconds remaining
+        pollInterval = 1000;
+      } else if (timeRemaining !== null && timeRemaining <= 0) {
+        // Poll every 500ms when round should be ending
+        pollInterval = 500;
+      } else {
+        pollInterval = 5000;
+      }
+    };
+
+    // Use dynamic interval
+    let timeoutId: NodeJS.Timeout;
+    const schedulePoll = () => {
+      timeoutId = setTimeout(() => {
+        poll();
+        schedulePoll();
+      }, pollInterval);
+    };
+    schedulePoll();
+
+    return () => clearTimeout(timeoutId);
+  }, [fetchBoard, getTimeRemaining]);
 
   return {
     board,
@@ -204,5 +238,6 @@ export function useBoard() {
     loading,
     error,
     refetch: fetchBoard,
+    getTimeRemaining,
   };
 }

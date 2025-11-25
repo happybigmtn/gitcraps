@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,25 +21,33 @@ export function RoundTimer({
   currentSlot = 0,
 }: RoundTimerProps) {
   const [timeRemaining, setTimeRemaining] = useState(0);
+  const lastSlotUpdateRef = useRef<number>(Date.now());
+  const baseTimeRef = useRef<number>(0);
 
-  // Calculate time remaining
+  // Sync with on-chain state when currentSlot changes
   useEffect(() => {
     if (endSlot && currentSlot) {
       const slotsRemaining = Math.max(0, endSlot - currentSlot);
-      setTimeRemaining(slotsToSeconds(slotsRemaining));
+      const newTime = slotsToSeconds(slotsRemaining);
+      baseTimeRef.current = newTime;
+      lastSlotUpdateRef.current = Date.now();
+      setTimeRemaining(newTime);
     }
   }, [endSlot, currentSlot]);
 
-  // Countdown timer
+  // Smooth countdown between slot updates
+  // Decrements based on elapsed real time since last slot update
   useEffect(() => {
-    if (timeRemaining <= 0) return;
+    if (baseTimeRef.current <= 0) return;
 
     const interval = setInterval(() => {
-      setTimeRemaining((prev) => Math.max(0, prev - 1));
-    }, 1000);
+      const elapsedSinceUpdate = (Date.now() - lastSlotUpdateRef.current) / 1000;
+      const estimatedRemaining = Math.max(0, baseTimeRef.current - elapsedSinceUpdate);
+      setTimeRemaining(estimatedRemaining);
+    }, 100); // Update display every 100ms for smooth countdown
 
     return () => clearInterval(interval);
-  }, [timeRemaining]);
+  }, [currentSlot]); // Re-run when currentSlot changes
 
   const isActive = timeRemaining > 0;
   const isUrgent = timeRemaining > 0 && timeRemaining <= 10;

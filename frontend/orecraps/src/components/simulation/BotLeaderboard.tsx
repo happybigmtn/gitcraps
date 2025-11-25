@@ -134,7 +134,7 @@ export function BotLeaderboard() {
       // If we're still in an epoch and need a new round
       if (round.winningSquare === null && board) {
         const timeRemaining = Number(round.expiresAt) - Number(board.currentSlot);
-        if (timeRemaining < -10) { // Round expired
+        if (timeRemaining < -2) { // Round expired (2 slots grace period)
           console.log("Round expired, simulating local dice roll...");
           const localWinningSquare = Math.floor(Math.random() * 36);
           recordRoundResult(localWinningSquare);
@@ -166,7 +166,7 @@ export function BotLeaderboard() {
       }
     };
 
-    const interval = setInterval(checkRoundEnd, 2000);
+    const interval = setInterval(checkRoundEnd, 1000);
     return () => clearInterval(interval);
   }, [isRunning, round, board, recordRoundResult, refetchBoard]);
 
