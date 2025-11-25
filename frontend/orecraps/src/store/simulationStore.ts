@@ -3,6 +3,16 @@ import { create } from "zustand";
 // Bot strategies
 export type BotStrategy = "lucky7" | "field" | "random" | "doubles" | "diversified";
 
+// Bonus bet payouts (true odds from simulation)
+export const BONUS_BET_PAYOUTS = {
+  5: 2,    // 5+ unique sums: 2:1 (fair: 2.39:1)
+  6: 4,    // 6+ unique sums: 4:1 (fair: 4.03:1)
+  7: 7,    // 7+ unique sums: 7:1 (fair: 7.31:1)
+  8: 15,   // 8+ unique sums: 15:1 (fair: 15.15:1)
+  9: 40,   // 9+ unique sums: 40:1 (fair: 40.68:1)
+  10: 189, // 10 unique sums: 189:1 (fair: 189.40:1)
+};
+
 // Bot configuration
 export interface Bot {
   id: string;
@@ -10,17 +20,29 @@ export interface Bot {
   pubkey: string;
   strategy: BotStrategy;
   color: string;
-  rngBalance: number; // RNG tokens staked (in RNG units)
+  rngBalance: number; // RNG tokens available
   initialRngBalance: number;
-  crapEarned: number; // CRAP tokens earned (in CRAP units)
+  crapEarned: number; // CRAP tokens earned this session
   lifetimeCrapEarned: number;
   deployedSquares: number[]; // indices of squares bot has bet on
-  deployedAmount: number; // in smallest RNG unit per square
+  deployedAmount: number; // RNG per square
   totalDeployed: number; // total RNG deployed this round
   lifetimeDeployed: number;
-  lifetimeWinnings: number;
   roundsPlayed: number;
   roundsWon: number;
+  epochsPlayed: number;
+  bonusBetsWon: number;
+  bonusCrapEarned: number; // CRAP from bonus bets
+}
+
+// Epoch state - tracks progress until a 7 is rolled
+export interface EpochState {
+  epochNumber: number;
+  roundsInEpoch: number;
+  uniqueSums: Set<number>; // Unique sums 2-6, 8-12 rolled this epoch
+  rollHistory: number[]; // All dice sums rolled this epoch
+  bonusBetActive: boolean; // Whether bonus bet is currently active
+  bonusBetMultiplier: number; // Current potential bonus multiplier (0 until 5+ unique)
 }
 
 // Simulation state
@@ -28,25 +50,65 @@ interface SimulationState {
   // Bots
   bots: Bot[];
 
+  // Current epoch tracking
+  epoch: EpochState;
+
   // Simulation state
   isRunning: boolean;
   isLoading: boolean;
   lastUpdate: number;
   error: string | null;
 
-  // Round tracking
+  // Round/epoch tracking
   currentRound: number;
+  totalEpochs: number;
+  lastWinningSquare: number | null;
+  lastDiceRoll: [number, number] | null;
+
+  // Timer sync with on-chain
+  roundExpiresAt: number | null; // On-chain slot
+  currentSlot: number | null;
 
   // Actions
   initializeBots: () => void;
-  startSimulation: () => void;
-  stopSimulation: () => void;
-  updateBot: (id: string, updates: Partial<Bot>) => void;
-  updateBotBets: (botId: string, squares: number[], amount: number) => void;
+  startEpoch: () => void;
+  placeBetsForRound: () => void;
   recordRoundResult: (winningSquare: number) => void;
+  resolveEpoch: () => void; // Called when 7 is rolled
   resetBots: () => void;
   setError: (error: string | null) => void;
   setLoading: (loading: boolean) => void;
+  setOnChainState: (expiresAt: number, currentSlot: number) => void;
+}
+
+// Convert square index to dice sum
+function squareToSum(square: number): number {
+  const die1 = Math.floor(square / 6) + 1;
+  const die2 = (square % 6) + 1;
+  return die1 + die2;
+}
+
+// Convert square index to dice values
+function squareToDice(square: number): [number, number] {
+  const die1 = Math.floor(square / 6) + 1;
+  const die2 = (square % 6) + 1;
+  return [die1, die2];
+}
+
+// Check if sum is 7
+function isSeven(square: number): boolean {
+  return squareToSum(square) === 7;
+}
+
+// Get bonus multiplier based on unique sums count
+function getBonusMultiplier(uniqueCount: number): number {
+  if (uniqueCount >= 10) return BONUS_BET_PAYOUTS[10];
+  if (uniqueCount >= 9) return BONUS_BET_PAYOUTS[9];
+  if (uniqueCount >= 8) return BONUS_BET_PAYOUTS[8];
+  if (uniqueCount >= 7) return BONUS_BET_PAYOUTS[7];
+  if (uniqueCount >= 6) return BONUS_BET_PAYOUTS[6];
+  if (uniqueCount >= 5) return BONUS_BET_PAYOUTS[5];
+  return 0;
 }
 
 // Strategy to squares mapping
@@ -80,7 +142,7 @@ const DEFAULT_BOTS: Bot[] = [
     pubkey: "6cHcyPWnXerjn4mpt2XAoVLzdjUGaxycyKjq945iWPov",
     strategy: "lucky7",
     color: "#22c55e", // green
-    rngBalance: 100, // 100 RNG tokens
+    rngBalance: 100,
     initialRngBalance: 100,
     crapEarned: 0,
     lifetimeCrapEarned: 0,
@@ -88,9 +150,11 @@ const DEFAULT_BOTS: Bot[] = [
     deployedAmount: 0,
     totalDeployed: 0,
     lifetimeDeployed: 0,
-    lifetimeWinnings: 0,
     roundsPlayed: 0,
     roundsWon: 0,
+    epochsPlayed: 0,
+    bonusBetsWon: 0,
+    bonusCrapEarned: 0,
   },
   {
     id: "bot2",
@@ -106,9 +170,11 @@ const DEFAULT_BOTS: Bot[] = [
     deployedAmount: 0,
     totalDeployed: 0,
     lifetimeDeployed: 0,
-    lifetimeWinnings: 0,
     roundsPlayed: 0,
     roundsWon: 0,
+    epochsPlayed: 0,
+    bonusBetsWon: 0,
+    bonusCrapEarned: 0,
   },
   {
     id: "bot3",
@@ -124,9 +190,11 @@ const DEFAULT_BOTS: Bot[] = [
     deployedAmount: 0,
     totalDeployed: 0,
     lifetimeDeployed: 0,
-    lifetimeWinnings: 0,
     roundsPlayed: 0,
     roundsWon: 0,
+    epochsPlayed: 0,
+    bonusBetsWon: 0,
+    bonusCrapEarned: 0,
   },
   {
     id: "bot4",
@@ -142,9 +210,11 @@ const DEFAULT_BOTS: Bot[] = [
     deployedAmount: 0,
     totalDeployed: 0,
     lifetimeDeployed: 0,
-    lifetimeWinnings: 0,
     roundsPlayed: 0,
     roundsWon: 0,
+    epochsPlayed: 0,
+    bonusBetsWon: 0,
+    bonusCrapEarned: 0,
   },
   {
     id: "bot5",
@@ -160,32 +230,73 @@ const DEFAULT_BOTS: Bot[] = [
     deployedAmount: 0,
     totalDeployed: 0,
     lifetimeDeployed: 0,
-    lifetimeWinnings: 0,
     roundsPlayed: 0,
     roundsWon: 0,
+    epochsPlayed: 0,
+    bonusBetsWon: 0,
+    bonusCrapEarned: 0,
   },
 ];
 
+const DEFAULT_EPOCH: EpochState = {
+  epochNumber: 0,
+  roundsInEpoch: 0,
+  uniqueSums: new Set<number>(),
+  rollHistory: [],
+  bonusBetActive: false,
+  bonusBetMultiplier: 0,
+};
+
 export const useSimulationStore = create<SimulationState>((set, get) => ({
   bots: DEFAULT_BOTS,
+  epoch: { ...DEFAULT_EPOCH, uniqueSums: new Set() },
   isRunning: false,
   isLoading: false,
   lastUpdate: Date.now(),
   error: null,
   currentRound: 0,
+  totalEpochs: 0,
+  lastWinningSquare: null,
+  lastDiceRoll: null,
+  roundExpiresAt: null,
+  currentSlot: null,
 
   initializeBots: () => {
-    set({ bots: DEFAULT_BOTS, error: null });
+    set({
+      bots: DEFAULT_BOTS,
+      epoch: { ...DEFAULT_EPOCH, uniqueSums: new Set() },
+      error: null,
+    });
   },
 
-  startSimulation: () => {
-    const { bots } = get();
+  startEpoch: () => {
+    const { totalEpochs } = get();
 
-    // Place bets for each bot based on their strategy
+    // Reset epoch state
+    set({
+      epoch: {
+        epochNumber: totalEpochs + 1,
+        roundsInEpoch: 0,
+        uniqueSums: new Set<number>(),
+        rollHistory: [],
+        bonusBetActive: true,
+        bonusBetMultiplier: 0,
+      },
+      isRunning: true,
+      totalEpochs: totalEpochs + 1,
+    });
+
+    // Place initial bets
+    get().placeBetsForRound();
+  },
+
+  placeBetsForRound: () => {
+    const { bots, epoch } = get();
+
     // Each bot stakes 1 RNG per square selected
     const updatedBots = bots.map((bot) => {
       const squares = getSquaresForStrategy(bot.strategy);
-      const amountPerSquare = 1; // 1 RNG token per square
+      const amountPerSquare = 1;
       const totalDeployed = squares.length * amountPerSquare;
 
       return {
@@ -193,7 +304,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         deployedSquares: squares,
         deployedAmount: amountPerSquare,
         totalDeployed,
-        rngBalance: bot.rngBalance - totalDeployed, // Deduct staked RNG
+        rngBalance: bot.rngBalance - totalDeployed,
         lifetimeDeployed: bot.lifetimeDeployed + totalDeployed,
         roundsPlayed: bot.roundsPlayed + 1,
       };
@@ -201,71 +312,127 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
     set({
       bots: updatedBots,
-      isRunning: true,
-      lastUpdate: Date.now(),
+      epoch: {
+        ...epoch,
+        roundsInEpoch: epoch.roundsInEpoch + 1,
+      },
       currentRound: get().currentRound + 1,
+      lastUpdate: Date.now(),
     });
   },
 
-  stopSimulation: () => {
-    set({ isRunning: false });
-  },
+  recordRoundResult: (winningSquare: number) => {
+    const { epoch, bots } = get();
+    const diceRoll = squareToDice(winningSquare);
+    const sum = squareToSum(winningSquare);
 
-  updateBot: (id, updates) => {
-    set((state) => ({
-      bots: state.bots.map((bot) =>
-        bot.id === id ? { ...bot, ...updates } : bot
-      ),
-    }));
-  },
+    // Update unique sums (excluding 7)
+    const newUniqueSums = new Set(epoch.uniqueSums);
+    if (sum !== 7) {
+      newUniqueSums.add(sum);
+    }
 
-  updateBotBets: (botId, squares, amount) => {
-    set((state) => ({
-      bots: state.bots.map((bot) =>
-        bot.id === botId
-          ? {
-              ...bot,
-              deployedSquares: squares,
-              deployedAmount: amount,
-              totalDeployed: squares.length * amount,
-            }
-          : bot
-      ),
-      lastUpdate: Date.now(),
-    }));
-  },
+    // Calculate new bonus multiplier
+    const bonusMultiplier = getBonusMultiplier(newUniqueSums.size);
 
-  recordRoundResult: (winningSquare) => {
-    set((state) => ({
-      bots: state.bots.map((bot) => {
-        const won = bot.deployedSquares.includes(winningSquare);
-        // Winners get their RNG back + CRAP reward based on multiplier
-        // Payout: 36x the stake on the winning square
-        const rngRefund = won ? bot.totalDeployed : 0; // Get RNG back if won
-        const crapReward = won ? (36 / bot.deployedSquares.length) * bot.totalDeployed : 0;
+    // Process bets for each bot
+    const updatedBots = bots.map((bot) => {
+      const won = bot.deployedSquares.includes(winningSquare);
+      const rngRefund = won ? bot.totalDeployed : 0;
+      const crapReward = won ? (36 / bot.deployedSquares.length) * bot.totalDeployed : 0;
+
+      return {
+        ...bot,
+        rngBalance: bot.rngBalance + rngRefund,
+        crapEarned: bot.crapEarned + crapReward,
+        lifetimeCrapEarned: bot.lifetimeCrapEarned + crapReward,
+        roundsWon: bot.roundsWon + (won ? 1 : 0),
+        deployedSquares: [],
+        totalDeployed: 0,
+      };
+    });
+
+    // Check if epoch ends (7 rolled)
+    const epochEnds = isSeven(winningSquare);
+
+    if (epochEnds) {
+      // Epoch ends - process bonus bets
+      const finalBots = updatedBots.map((bot) => {
+        // Bonus payout based on unique sums collected
+        const bonusPayout = bonusMultiplier > 0 ? bonusMultiplier : 0;
+        const bonusCrap = bonusPayout > 0 ? bonusPayout : 0;
 
         return {
           ...bot,
-          rngBalance: bot.rngBalance + rngRefund, // Return RNG if won
-          crapEarned: bot.crapEarned + crapReward,
-          lifetimeCrapEarned: bot.lifetimeCrapEarned + crapReward,
-          lifetimeWinnings: bot.lifetimeWinnings + crapReward,
-          roundsWon: bot.roundsWon + (won ? 1 : 0),
-          deployedSquares: [], // Reset for next round
-          totalDeployed: 0,
+          epochsPlayed: bot.epochsPlayed + 1,
+          bonusBetsWon: bot.bonusBetsWon + (bonusPayout > 0 ? 1 : 0),
+          bonusCrapEarned: bot.bonusCrapEarned + bonusCrap,
+          crapEarned: bot.crapEarned + bonusCrap,
+          lifetimeCrapEarned: bot.lifetimeCrapEarned + bonusCrap,
         };
-      }),
-      isRunning: false,
-    }));
+      });
+
+      set({
+        bots: finalBots,
+        epoch: {
+          ...epoch,
+          uniqueSums: newUniqueSums,
+          rollHistory: [...epoch.rollHistory, sum],
+          bonusBetMultiplier: bonusMultiplier,
+        },
+        isRunning: false,
+        lastWinningSquare: winningSquare,
+        lastDiceRoll: diceRoll,
+      });
+    } else {
+      // Epoch continues - place new bets
+      set({
+        bots: updatedBots,
+        epoch: {
+          ...epoch,
+          uniqueSums: newUniqueSums,
+          rollHistory: [...epoch.rollHistory, sum],
+          bonusBetMultiplier: bonusMultiplier,
+        },
+        lastWinningSquare: winningSquare,
+        lastDiceRoll: diceRoll,
+      });
+
+      // Auto-place bets for next round
+      setTimeout(() => {
+        if (get().isRunning) {
+          get().placeBetsForRound();
+        }
+      }, 100);
+    }
+  },
+
+  resolveEpoch: () => {
+    // Called explicitly when epoch needs to end
+    set({ isRunning: false });
   },
 
   resetBots: () => {
-    set({ bots: DEFAULT_BOTS, currentRound: 0 });
+    set({
+      bots: DEFAULT_BOTS.map(bot => ({ ...bot })),
+      epoch: { ...DEFAULT_EPOCH, uniqueSums: new Set() },
+      currentRound: 0,
+      totalEpochs: 0,
+      lastWinningSquare: null,
+      lastDiceRoll: null,
+    });
   },
 
   setError: (error) => set({ error }),
 
   setLoading: (loading) => set({ isLoading: loading }),
+
+  setOnChainState: (expiresAt, currentSlot) => {
+    set({
+      roundExpiresAt: expiresAt,
+      currentSlot: currentSlot,
+    });
+  },
 }));
 
 // Selectors
@@ -278,6 +445,9 @@ export const useTotalBotDeployed = () =>
   useSimulationStore((state) =>
     state.bots.reduce((acc, bot) => acc + bot.totalDeployed, 0)
   );
+
+export const useEpochState = () =>
+  useSimulationStore((state) => state.epoch);
 
 // Helper function to compute bot square map (used outside of React)
 export const computeBotSquareMap = (bots: Bot[]) => {
@@ -298,4 +468,17 @@ export const useBots = () => useSimulationStore((state) => state.bots);
 export const useBotSquareMap = () => {
   const bots = useSimulationStore((state) => state.bots);
   return computeBotSquareMap(bots);
+};
+
+// Hook to get time remaining in current round (synced with on-chain)
+export const useTimeRemaining = () => {
+  const roundExpiresAt = useSimulationStore((state) => state.roundExpiresAt);
+  const currentSlot = useSimulationStore((state) => state.currentSlot);
+
+  if (!roundExpiresAt || !currentSlot) return null;
+
+  const slotsRemaining = roundExpiresAt - currentSlot;
+  const secondsRemaining = (slotsRemaining * 400) / 1000; // 400ms per slot
+
+  return Math.max(0, secondsRemaining);
 };
