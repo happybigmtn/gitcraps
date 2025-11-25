@@ -29,6 +29,7 @@ pub enum OreInstruction {
     SetVarAddress = 18,
     NewVar = 19,
     SetAdminFee = 20,
+    StartRound = 22,
 }
 
 #[repr(C)]
@@ -169,7 +170,14 @@ pub struct SetSwapProgram {}
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct SetVarAddress {}
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct StartRound {
+    pub duration: [u8; 8],
+}
+
 instruction!(OreInstruction, Initialize);
+instruction!(OreInstruction, StartRound);
 instruction!(OreInstruction, Automate);
 instruction!(OreInstruction, Close);
 instruction!(OreInstruction, Checkpoint);

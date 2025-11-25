@@ -1,8 +1,10 @@
 "use client";
 
+import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/gameStore";
+import { useSimulationStore, computeBotSquareMap } from "@/store/simulationStore";
 import { formatSol } from "@/lib/solana";
 import {
   ALL_DICE_COMBINATIONS,
@@ -14,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Grid3X3, Dices, Shield } from "lucide-react";
+import { Grid3X3, Dices } from "lucide-react";
 
 interface SquareData {
   index: number;
@@ -70,6 +72,17 @@ export function MiningBoard({
 }: MiningBoardProps) {
   const { selectedSquares, selectedSum, toggleSquare, selectBySum, clearSquares } =
     useGameStore();
+  const bots = useSimulationStore((state) => state.bots);
+  const simulationRunning = useSimulationStore((state) => state.isRunning);
+
+  // Compute bot square map with memoization to avoid recalculating on every render
+  const botSquareMap = useMemo(() => computeBotSquareMap(bots), [bots]);
+
+  // Track if mounted to avoid SSR hydration issues
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Generate default square data if not provided
   const boardSquares: SquareData[] =
@@ -267,6 +280,28 @@ export function MiningBoard({
                     {Number(square.deployed) > 0 && (
                       <div className="absolute bottom-0.5 text-[8px] text-chart-2 font-bold">
                         {formatSol(square.deployed)}
+                      </div>
+                    )}
+
+                    {/* Bot bet indicators - only show when mounted to avoid SSR issues */}
+                    {mounted && botSquareMap[index] && botSquareMap[index].length > 0 && (
+                      <div className="absolute bottom-0.5 left-0.5 flex gap-[2px]">
+                        {botSquareMap[index].slice(0, 3).map((bot) => (
+                          <motion.div
+                            key={bot.botId}
+                            className="w-2 h-2 rounded-full border border-white/50"
+                            style={{ backgroundColor: bot.color }}
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 500 }}
+                            title={bot.name}
+                          />
+                        ))}
+                        {botSquareMap[index].length > 3 && (
+                          <div className="w-2 h-2 rounded-full bg-gray-500 text-[6px] flex items-center justify-center text-white">
+                            +{botSquareMap[index].length - 3}
+                          </div>
+                        )}
                       </div>
                     )}
                   </motion.button>

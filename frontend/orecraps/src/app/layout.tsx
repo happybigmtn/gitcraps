@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OreCraps - Dice Mining on Solana",
+  title: "OreCraps - Dice Game on Solana",
   description:
-    "Mine ORE tokens by predicting dice rolls. A provably fair mining game on Solana.",
-  keywords: ["Solana", "ORE", "mining", "dice", "cryptocurrency", "DeFi"],
+    "Stake RNG tokens to play dice and earn CRAP tokens. A provably fair game on Solana.",
+  keywords: ["Solana", "RNG", "CRAP", "dice", "cryptocurrency", "DeFi", "gaming"],
   openGraph: {
-    title: "OreCraps - Dice Mining on Solana",
+    title: "OreCraps - Dice Game on Solana",
     description:
-      "Mine ORE tokens by predicting dice rolls. A provably fair mining game on Solana.",
+      "Stake RNG tokens to play dice and earn CRAP tokens. A provably fair game on Solana.",
     type: "website",
   },
 };

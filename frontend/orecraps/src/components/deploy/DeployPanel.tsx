@@ -23,7 +23,7 @@ import { Rocket, Coins, Grid3X3, Dices, Loader2 } from "lucide-react";
 interface DeployPanelProps {
   onDeploy?: () => void;
   disabled?: boolean;
-  baseReward?: number; // Estimated base ORE reward
+  baseReward?: number; // Estimated base CRAP reward
 }
 
 export function DeployPanel({
@@ -254,11 +254,11 @@ export function DeployPanel({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Coins className="h-5 w-5 text-chart-1" />
-              <span className="text-sm">Potential ORE Reward</span>
+              <span className="text-sm">Potential CRAP Reward</span>
             </div>
             <div className="text-right">
               <div className="font-mono font-bold text-lg text-chart-1">
-                {potentialReward.toFixed(2)} ORE
+                {potentialReward.toFixed(2)} CRAP
               </div>
               <div className="text-xs text-muted-foreground">
                 if dice matches prediction

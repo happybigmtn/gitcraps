@@ -5,16 +5,15 @@ import { motion } from "framer-motion";
 import { WalletButton } from "@/components/wallet/WalletButton";
 import { MiningBoard } from "@/components/board/MiningBoard";
 import { DiceAnimation } from "@/components/dice/DiceAnimation";
-import { ProbabilityChart } from "@/components/dice/ProbabilityChart";
 import { DeployPanel } from "@/components/deploy/DeployPanel";
-import { PlayerStats } from "@/components/stats/PlayerStats";
 import { RoundTimer } from "@/components/stats/RoundTimer";
+import { BotLeaderboard } from "@/components/simulation/BotLeaderboard";
 import { useBoard } from "@/hooks/useBoard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGameStore } from "@/store/gameStore";
-import { Dices, Grid3X3, BarChart3, Rocket, Loader2 } from "lucide-react";
+import { Dices, Grid3X3, Rocket, Loader2, Bot } from "lucide-react";
 
 export default function Home() {
   const [showDiceDemo, setShowDiceDemo] = useState(false);
@@ -82,11 +81,11 @@ export default function Home() {
                 {boardError}
               </div>
             </Card>
-          ) : board ? (
+          ) : board && round ? (
             <RoundTimer
               roundId={Number(board.roundId)}
-              startSlot={Number(board.currentSlot)}
-              endSlot={Number(board.currentSlot) + Number(board.roundSlots)}
+              startSlot={Number(round.expiresAt) - Number(board.roundSlots)}
+              endSlot={Number(round.expiresAt)}
               currentSlot={Number(board.currentSlot)}
             />
           ) : null}
@@ -141,18 +140,17 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Desktop Layout */}
-        <div className="hidden lg:grid lg:grid-cols-12 gap-6">
-          {/* Left Column - Mining Board with Dice Selector */}
+        {/* Desktop Layout - Single screen */}
+        <div className="hidden lg:grid lg:grid-cols-12 gap-4">
+          {/* Left Column - Mining Board */}
           <div className="lg:col-span-7">
             <MiningBoard squares={boardSquares} isRoundActive={!!board} />
           </div>
 
-          {/* Right Column - Deploy & Stats */}
-          <div className="lg:col-span-5 space-y-6">
+          {/* Right Column - Deploy & Leaderboard */}
+          <div className="lg:col-span-5 space-y-4">
             <DeployPanel />
-            <ProbabilityChart />
-            <PlayerStats />
+            <BotLeaderboard />
           </div>
         </div>
 
@@ -168,9 +166,9 @@ export default function Home() {
                 <Rocket className="h-4 w-4 mr-1" />
                 Deploy
               </TabsTrigger>
-              <TabsTrigger value="stats">
-                <BarChart3 className="h-4 w-4 mr-1" />
-                Stats
+              <TabsTrigger value="bots">
+                <Bot className="h-4 w-4 mr-1" />
+                Bots
               </TabsTrigger>
             </TabsList>
 
@@ -180,23 +178,19 @@ export default function Home() {
 
             <TabsContent value="deploy" className="mt-4 space-y-4">
               <DeployPanel />
-              <ProbabilityChart />
             </TabsContent>
 
-            <TabsContent value="stats" className="mt-4">
-              <PlayerStats />
+            <TabsContent value="bots" className="mt-4">
+              <BotLeaderboard />
             </TabsContent>
           </Tabs>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-12 py-6">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>OreCraps - Dice Mining on Solana</p>
-          <p className="mt-1">
-            All combinations have equal expected value (36x payout / 36 outcomes). Mine responsibly.
-          </p>
+      <footer className="border-t mt-6 py-3">
+        <div className="container mx-auto px-4 text-center text-xs text-muted-foreground">
+          OreCraps - Stake RNG, Earn CRAP on Solana | All combinations have equal expected value
         </div>
       </footer>
     </div>

@@ -6,26 +6,26 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useGameStore, useWinRate } from "@/store/gameStore";
-import { formatSol, formatOre } from "@/lib/solana";
+import { formatSol, formatCrap } from "@/lib/solana";
 import { toast } from "sonner";
 import { User, Coins, TrendingUp, Gift, Award } from "lucide-react";
 
 interface PlayerStatsProps {
   minerData?: {
     rewardsSol: bigint;
-    rewardsOre: bigint;
+    rewardsCrap: bigint;
     lifetimeRewardsSol: bigint;
-    lifetimeRewardsOre: bigint;
+    lifetimeRewardsCrap: bigint;
     dicePrediction: number;
   } | null;
   onClaimSol?: () => void;
-  onClaimOre?: () => void;
+  onClaimCrap?: () => void;
 }
 
 export function PlayerStats({
   minerData,
   onClaimSol,
-  onClaimOre,
+  onClaimCrap,
 }: PlayerStatsProps) {
   const { connected, publicKey } = useWallet();
   const { roundHistory } = useGameStore();
@@ -45,9 +45,9 @@ export function PlayerStats({
   }
 
   const claimableSol = minerData?.rewardsSol || 0n;
-  const claimableOre = minerData?.rewardsOre || 0n;
+  const claimableCrap = minerData?.rewardsCrap || 0n;
   const lifetimeSol = minerData?.lifetimeRewardsSol || 0n;
-  const lifetimeOre = minerData?.lifetimeRewardsOre || 0n;
+  const lifetimeCrap = minerData?.lifetimeRewardsCrap || 0n;
 
   const handleClaimSol = async () => {
     try {
@@ -61,15 +61,15 @@ export function PlayerStats({
     }
   };
 
-  const handleClaimOre = async () => {
+  const handleClaimCrap = async () => {
     try {
-      toast.info("Claiming ORE...");
+      toast.info("Claiming CRAP...");
       // TODO: Implement actual claim
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      onClaimOre?.();
-      toast.success("ORE claimed successfully!");
+      onClaimCrap?.();
+      toast.success("CRAP claimed successfully!");
     } catch (error) {
-      toast.error("Failed to claim ORE");
+      toast.error("Failed to claim CRAP");
     }
   };
 
@@ -108,16 +108,16 @@ export function PlayerStats({
 
           <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
             <div>
-              <div className="text-xs text-muted-foreground">ORE</div>
+              <div className="text-xs text-muted-foreground">CRAP</div>
               <div className="font-mono font-bold text-chart-1">
-                {formatOre(claimableOre)}
+                {formatCrap(claimableCrap)}
               </div>
             </div>
             <Button
               size="sm"
               variant="outline"
-              onClick={handleClaimOre}
-              disabled={claimableOre === 0n}
+              onClick={handleClaimCrap}
+              disabled={claimableCrap === 0n}
             >
               Claim
             </Button>
@@ -139,8 +139,8 @@ export function PlayerStats({
               <div className="font-mono font-bold">{formatSol(lifetimeSol)}</div>
             </div>
             <div className="p-3 bg-secondary/30 rounded-lg">
-              <div className="text-xs text-muted-foreground">Total ORE</div>
-              <div className="font-mono font-bold">{formatOre(lifetimeOre)}</div>
+              <div className="text-xs text-muted-foreground">Total CRAP</div>
+              <div className="font-mono font-bold">{formatCrap(lifetimeCrap)}</div>
             </div>
           </div>
         </div>

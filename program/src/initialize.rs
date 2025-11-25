@@ -34,6 +34,9 @@ pub fn process_initialize(accounts: &[AccountInfo<'_>], _data: &[u8]) -> Program
 
     sol_log("Initializing OreCraps program accounts...");
 
+    // Get current slot
+    let clock = Clock::get()?;
+
     // Create Board account
     create_program_account::<Board>(
         board_info,
@@ -44,8 +47,9 @@ pub fn process_initialize(accounts: &[AccountInfo<'_>], _data: &[u8]) -> Program
     )?;
     let board = board_info.as_account_mut::<Board>(&ore_api::ID)?;
     board.round_id = 0;
-    board.start_slot = 0;
-    board.end_slot = u64::MAX; // Round starts when first deploy happens
+    // Pre-start the round for devnet testing (bypasses entropy requirement)
+    board.start_slot = clock.slot;
+    board.end_slot = clock.slot + 3000; // ~20 minutes at 400ms/slot
     sol_log(&format!("Board created at {}", board_info.key));
 
     // Create Config account
@@ -96,7 +100,7 @@ pub fn process_initialize(accounts: &[AccountInfo<'_>], _data: &[u8]) -> Program
     round.deployed = [0; BOARD_SIZE];
     round.slot_hash = [0; 32];
     round.count = [0; BOARD_SIZE];
-    round.expires_at = u64::MAX;
+    round.expires_at = board.end_slot + 150; // Claims expire shortly after round ends
     round.motherlode = 0;
     round.rent_payer = *signer_info.key;
     round.top_miner = Pubkey::default();

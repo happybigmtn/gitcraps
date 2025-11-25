@@ -11,19 +11,19 @@ export const ENTROPY_PROGRAM_ID = new PublicKey(
   "EntropykUXLDfYhdrWNqx9TL8ePGS3Hj5ENDadWFRw1"
 );
 
-// Instruction discriminators (matches OreInstruction enum)
-export enum OreInstruction {
+// Instruction discriminators (matches CrapsInstruction enum)
+export enum CrapsInstruction {
   Automate = 0,
   Checkpoint = 2,
   ClaimSOL = 3,
-  ClaimORE = 4,
+  ClaimCRAP = 4, // Claim CRAP token rewards
   Close = 5,
   Deploy = 6,
   Log = 8,
   Reset = 9,
   RecycleSOL = 21,
-  Deposit = 10,
-  Withdraw = 11,
+  Deposit = 10, // Deposit RNG tokens
+  Withdraw = 11, // Withdraw RNG tokens
   ClaimYield = 12,
 }
 
@@ -90,7 +90,7 @@ export function createDeployInstruction(
   // Format: [discriminator (1 byte)] [amount (8 bytes)] [squares mask (8 bytes)]
   const mask = squaresToMask(squares);
   const data = new Uint8Array(17);
-  data[0] = OreInstruction.Deploy;
+  data[0] = CrapsInstruction.Deploy;
   data.set(toLeBytes(amount, 8), 1);
   data.set(toLeBytes(mask, 8), 9);
 
@@ -131,7 +131,7 @@ export function createCheckpointInstruction(
   );
 
   const data = new Uint8Array(1);
-  data[0] = OreInstruction.Checkpoint;
+  data[0] = CrapsInstruction.Checkpoint;
 
   return new TransactionInstruction({
     programId: ORE_PROGRAM_ID,
@@ -156,7 +156,7 @@ export function createClaimSOLInstruction(
   const [minerAddress] = minerPDA(signer);
 
   const data = new Uint8Array(1);
-  data[0] = OreInstruction.ClaimSOL;
+  data[0] = CrapsInstruction.ClaimSOL;
 
   return new TransactionInstruction({
     programId: ORE_PROGRAM_ID,

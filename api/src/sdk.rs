@@ -500,3 +500,24 @@ pub fn set_var_address(signer: Pubkey, new_var_address: Pubkey) -> Instruction {
         data: SetVarAddress {}.to_bytes(),
     }
 }
+
+/// Start a round manually (admin only).
+/// Duration is in slots (~400ms per slot).
+pub fn start_round(signer: Pubkey, round_id: u64, duration: u64) -> Instruction {
+    let board_address = board_pda().0;
+    let config_address = config_pda().0;
+    let round_address = round_pda(round_id).0;
+    Instruction {
+        program_id: crate::ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(board_address, false),
+            AccountMeta::new_readonly(config_address, false),
+            AccountMeta::new(round_address, false),
+        ],
+        data: StartRound {
+            duration: duration.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}

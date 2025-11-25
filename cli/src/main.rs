@@ -125,6 +125,9 @@ async fn main() {
         "lut" => {
             lut(&rpc, &payer).await.unwrap();
         }
+        "start_round" => {
+            start_round(&rpc, &payer).await.unwrap();
+        }
         _ => panic!("Invalid command"),
     };
 }
@@ -213,6 +216,36 @@ async fn lut(
     };
     submit_transaction(rpc, payer, &[ix_1, ix_2]).await?;
     println!("LUT address: {}", lut_address);
+    Ok(())
+}
+
+/// Start a round manually (admin only).
+/// Usage: COMMAND=start_round DURATION=3000 RPC=... KEYPAIR=... cargo run
+async fn start_round(
+    rpc: &RpcClient,
+    payer: &solana_sdk::signer::keypair::Keypair,
+) -> Result<(), anyhow::Error> {
+    // Duration in slots (default: 3000 slots = ~20 minutes at 400ms/slot)
+    let duration = std::env::var("DURATION")
+        .unwrap_or("3000".to_string())
+        .parse::<u64>()
+        .expect("Invalid DURATION");
+
+    let board = get_board(rpc).await?;
+    let round_id = board.round_id;
+
+    println!("Starting round {} with duration {} slots (~{} minutes)...",
+        round_id, duration, (duration as f64 * 0.4) / 60.0);
+
+    let ix = ore_api::sdk::start_round(payer.pubkey(), round_id, duration);
+    let sig = submit_transaction(rpc, payer, &[ix]).await?;
+    println!("Start round transaction: {:?}", sig);
+
+    // Print updated board state
+    let board = get_board(rpc).await?;
+    let clock = get_clock(rpc).await?;
+    print_board(board, &clock);
+
     Ok(())
 }
 

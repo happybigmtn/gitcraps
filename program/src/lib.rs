@@ -17,6 +17,7 @@ mod set_admin_fee;
 mod set_fee_collector;
 mod set_swap_program;
 mod set_var_address;
+mod start_round;
 mod withdraw;
 mod wrap;
 
@@ -39,6 +40,7 @@ use set_admin_fee::*;
 use set_fee_collector::*;
 use set_swap_program::*;
 use set_var_address::*;
+use start_round::*;
 use withdraw::*;
 use wrap::*;
 
@@ -79,6 +81,7 @@ pub fn process_instruction(
         OreInstruction::SetVarAddress => process_set_var_address(accounts, data)?,
         OreInstruction::NewVar => process_new_var(accounts, data)?,
         OreInstruction::SetAdminFee => process_set_admin_fee(accounts, data)?,
+        OreInstruction::StartRound => process_start_round(accounts, data)?,
     }
 
     Ok(())

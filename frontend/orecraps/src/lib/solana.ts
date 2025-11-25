@@ -1,13 +1,12 @@
-import { PublicKey, Connection, clusterApiUrl } from "@solana/web3.js";
+import { PublicKey, Connection, clusterApiUrl, TransactionInstruction, SystemProgram } from "@solana/web3.js";
 
 // Program IDs
 // Devnet program ID - deployed for testing
 export const ORE_PROGRAM_ID = new PublicKey(
   "JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK"
 );
-export const ORE_MINT = new PublicKey(
-  "oreoU2P8bN6jkk3jbaiVxYnG1dCXcYxwhwyK9jSybcp"
-);
+// Legacy ORE mint - not used in this game
+// Users stake RNG tokens and earn CRAP tokens
 
 // DEVNET TOKEN SYSTEM
 // RNG token - staked to play games
@@ -90,9 +89,17 @@ export function formatSol(lamports: bigint | number): string {
   });
 }
 
-export function formatOre(amount: bigint | number): string {
-  const ore = Number(amount) / Number(ONE_ORE);
-  return ore.toLocaleString(undefined, {
+export function formatRng(amount: bigint | number): string {
+  const rng = Number(amount) / Number(ONE_RNG);
+  return rng.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
+
+export function formatCrap(amount: bigint | number): string {
+  const crap = Number(amount) / Number(ONE_CRAP);
+  return crap.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   });
@@ -121,4 +128,45 @@ export function formatTimeRemaining(seconds: number): string {
 // Truncate address for display
 export function truncateAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
+}
+
+// Instruction discriminators
+const INSTRUCTION_START_ROUND = 22;
+
+// Helper to convert number to little-endian bytes
+function toLEBytes(value: bigint | number, bytes: number): Uint8Array {
+  const arr = new Uint8Array(bytes);
+  let v = BigInt(value);
+  for (let i = 0; i < bytes; i++) {
+    arr[i] = Number(v & 0xffn);
+    v = v >> 8n;
+  }
+  return arr;
+}
+
+// Build StartRound instruction
+export function buildStartRoundInstruction(
+  signer: PublicKey,
+  roundId: bigint,
+  duration: number = 3000 // Default 3000 slots (~20 minutes)
+): TransactionInstruction {
+  const [boardAddress] = boardPDA();
+  const [configAddress] = configPDA();
+  const [roundAddress] = roundPDA(roundId);
+
+  // Instruction data: discriminator (1 byte) + duration (8 bytes LE)
+  const data = new Uint8Array(9);
+  data[0] = INSTRUCTION_START_ROUND;
+  data.set(toLEBytes(duration, 8), 1);
+
+  return new TransactionInstruction({
+    programId: ORE_PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: boardAddress, isSigner: false, isWritable: true },
+      { pubkey: configAddress, isSigner: false, isWritable: false },
+      { pubkey: roundAddress, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.from(data),
+  });
 }
