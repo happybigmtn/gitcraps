@@ -166,8 +166,8 @@ export function BotLeaderboard() {
       }
     };
 
-    // Check every 3 seconds to reduce RPC pressure
-    const interval = setInterval(checkRoundEnd, 3000);
+    // Check every 10 seconds to reduce RPC pressure
+    const interval = setInterval(checkRoundEnd, 10000);
     return () => clearInterval(interval);
   }, [isRunning, round, board, recordRoundResult]);
 

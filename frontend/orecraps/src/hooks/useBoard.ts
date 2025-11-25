@@ -25,12 +25,13 @@ export interface RoundState {
   totalWinnings: bigint;
 }
 
-// Rate limiting constants
-const MIN_POLL_INTERVAL = 2000; // Minimum 2 seconds between polls
-const NORMAL_POLL_INTERVAL = 5000; // Normal polling at 5 seconds
-const FAST_POLL_INTERVAL = 2000; // Fast polling when close to round end
+// Rate limiting constants - VERY conservative to avoid 429s
+const MIN_POLL_INTERVAL = 10000; // Minimum 10 seconds between polls
+const NORMAL_POLL_INTERVAL = 15000; // Normal polling at 15 seconds
+const FAST_POLL_INTERVAL = 10000; // Fast polling when close to round end
 const BACKOFF_MULTIPLIER = 2; // Double backoff on rate limit
-const MAX_BACKOFF = 30000; // Max 30 second backoff
+const MAX_BACKOFF = 60000; // Max 60 second backoff
+const INITIAL_BACKOFF = 10000; // Start with 10 second backoff on error
 
 // Board account layout offsets (8-byte discriminator + fields)
 // Based on ore_api::state::Board struct
@@ -231,10 +232,11 @@ export function useBoard() {
       console.error("Error fetching board:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch board";
 
-      // Check for rate limiting (429)
-      if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
-        console.warn(`Rate limited - backing off to ${backoffRef.current * BACKOFF_MULTIPLIER}ms`);
-        backoffRef.current = Math.min(backoffRef.current * BACKOFF_MULTIPLIER, MAX_BACKOFF);
+      // Check for rate limiting (429) or any network error
+      if (errorMessage.includes("429") || errorMessage.includes("rate limit") || errorMessage.includes("failed")) {
+        const newBackoff = Math.max(INITIAL_BACKOFF, backoffRef.current * BACKOFF_MULTIPLIER);
+        backoffRef.current = Math.min(newBackoff, MAX_BACKOFF);
+        console.warn(`Rate limited - backing off to ${backoffRef.current}ms`);
         // Don't show rate limit errors to user, just back off silently
       } else {
         setError(errorMessage);
