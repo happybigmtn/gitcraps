@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
 import { boardPDA, roundPDA, ORE_PROGRAM_ID } from "@/lib/solana";
 import { BOARD_SIZE } from "@/lib/program";
 
@@ -23,6 +24,13 @@ export interface RoundState {
   winningSquare: number | null; // Calculated from slot_hash when available
   totalWinnings: bigint;
 }
+
+// Rate limiting constants
+const MIN_POLL_INTERVAL = 2000; // Minimum 2 seconds between polls
+const NORMAL_POLL_INTERVAL = 5000; // Normal polling at 5 seconds
+const FAST_POLL_INTERVAL = 2000; // Fast polling when close to round end
+const BACKOFF_MULTIPLIER = 2; // Double backoff on rate limit
+const MAX_BACKOFF = 30000; // Max 30 second backoff
 
 // Board account layout offsets (8-byte discriminator + fields)
 // Based on ore_api::state::Board struct
@@ -102,14 +110,41 @@ export function useBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBoard = useCallback(async () => {
+  // Rate limiting state
+  const lastFetchRef = useRef<number>(0);
+  const backoffRef = useRef<number>(MIN_POLL_INTERVAL);
+  const fetchingRef = useRef<boolean>(false);
+  const lastRoundIdRef = useRef<bigint | null>(null);
+
+  const fetchBoard = useCallback(async (force = false) => {
+    // Prevent concurrent fetches
+    if (fetchingRef.current) {
+      return;
+    }
+
+    // Rate limiting - don't fetch too frequently unless forced
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchRef.current;
+    if (!force && timeSinceLastFetch < backoffRef.current) {
+      return;
+    }
+
+    fetchingRef.current = true;
+    lastFetchRef.current = now;
+
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch board account
+      // Get board address first
       const [boardAddress] = boardPDA();
-      const boardAccount = await connection.getAccountInfo(boardAddress);
+
+      // Single batched request: get board info + current slot
+      // This reduces 3 RPC calls to 2 (or 1 if round hasn't changed)
+      const [boardAccount, currentSlot] = await Promise.all([
+        connection.getAccountInfo(boardAddress),
+        connection.getSlot(),
+      ]);
 
       if (!boardAccount) {
         setError("Board account not found. Program may not be initialized.");
@@ -122,72 +157,93 @@ export function useBoard() {
       const roundId = readU64(boardData, BOARD_ROUND_ID_OFFSET);
       const roundSlots = readU64(boardData, BOARD_ROUND_SLOTS_OFFSET);
 
-      // Get current slot
-      const currentSlot = BigInt(await connection.getSlot());
-
       setBoard({
         roundId,
         roundSlots,
-        currentSlot,
+        currentSlot: BigInt(currentSlot),
       });
 
-      // Fetch current round account
-      const [roundAddress] = roundPDA(roundId);
-      const roundAccount = await connection.getAccountInfo(roundAddress);
+      // Only fetch round if round ID changed or we don't have round data
+      const needsRoundFetch = lastRoundIdRef.current !== roundId || round === null;
 
-      if (roundAccount) {
-        const roundData = new Uint8Array(roundAccount.data);
+      if (needsRoundFetch) {
+        const [roundAddress] = roundPDA(roundId);
+        const roundAccount = await connection.getAccountInfo(roundAddress);
 
-        // Parse deployed array
-        const deployed: bigint[] = [];
-        for (let i = 0; i < BOARD_SIZE; i++) {
-          deployed.push(readU64(roundData, ROUND_DEPLOYED_OFFSET + i * 8));
+        if (roundAccount) {
+          const roundData = new Uint8Array(roundAccount.data);
+
+          // Parse deployed array
+          const deployed: bigint[] = [];
+          for (let i = 0; i < BOARD_SIZE; i++) {
+            deployed.push(readU64(roundData, ROUND_DEPLOYED_OFFSET + i * 8));
+          }
+
+          // Parse count array
+          const count: bigint[] = [];
+          for (let i = 0; i < BOARD_SIZE; i++) {
+            count.push(readU64(roundData, ROUND_COUNT_OFFSET + i * 8));
+          }
+
+          const expiresAt = readU64(roundData, ROUND_EXPIRES_AT_OFFSET);
+          const motherlode = readU64(roundData, ROUND_MOTHERLODE_OFFSET);
+          const topMiner = readPubkey(roundData, ROUND_TOP_MINER_OFFSET);
+          const totalDeployed = readU64(roundData, ROUND_TOTAL_DEPLOYED_OFFSET);
+          const totalWinnings = readU64(roundData, ROUND_TOTAL_WINNINGS_OFFSET);
+
+          // Parse slot_hash
+          const slotHash = roundData.slice(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
+
+          // Calculate winning square if slot_hash is set
+          let winningSquare: number | null = null;
+          const rng = calculateRng(slotHash);
+          if (rng !== null) {
+            winningSquare = calculateWinningSquare(rng);
+          }
+
+          setRound({
+            id: roundId,
+            deployed,
+            count,
+            totalDeployed,
+            expiresAt,
+            motherlode,
+            topMiner: topMiner || null,
+            slotHash,
+            winningSquare,
+            totalWinnings,
+          });
+
+          lastRoundIdRef.current = roundId;
+        } else {
+          setRound(null);
+          lastRoundIdRef.current = null;
         }
-
-        // Parse count array
-        const count: bigint[] = [];
-        for (let i = 0; i < BOARD_SIZE; i++) {
-          count.push(readU64(roundData, ROUND_COUNT_OFFSET + i * 8));
-        }
-
-        const expiresAt = readU64(roundData, ROUND_EXPIRES_AT_OFFSET);
-        const motherlode = readU64(roundData, ROUND_MOTHERLODE_OFFSET);
-        const topMiner = readPubkey(roundData, ROUND_TOP_MINER_OFFSET);
-        const totalDeployed = readU64(roundData, ROUND_TOTAL_DEPLOYED_OFFSET);
-        const totalWinnings = readU64(roundData, ROUND_TOTAL_WINNINGS_OFFSET);
-
-        // Parse slot_hash
-        const slotHash = roundData.slice(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
-
-        // Calculate winning square if slot_hash is set
-        let winningSquare: number | null = null;
-        const rng = calculateRng(slotHash);
-        if (rng !== null) {
-          winningSquare = calculateWinningSquare(rng);
-        }
-
-        setRound({
-          id: roundId,
-          deployed,
-          count,
-          totalDeployed,
-          expiresAt,
-          motherlode,
-          topMiner: topMiner || null,
-          slotHash,
-          winningSquare,
-          totalWinnings,
-        });
       } else {
-        setRound(null);
+        // Just update the currentSlot in existing round context
+        // Round data stays the same, only slot changed
       }
+
+      // Success - reset backoff
+      backoffRef.current = MIN_POLL_INTERVAL;
+
     } catch (err) {
       console.error("Error fetching board:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch board");
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch board";
+
+      // Check for rate limiting (429)
+      if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
+        console.warn(`Rate limited - backing off to ${backoffRef.current * BACKOFF_MULTIPLIER}ms`);
+        backoffRef.current = Math.min(backoffRef.current * BACKOFF_MULTIPLIER, MAX_BACKOFF);
+        // Don't show rate limit errors to user, just back off silently
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [connection]);
+  }, [connection, round]);
 
   // Calculate time remaining until round expires
   const getTimeRemaining = useCallback(() => {
@@ -198,35 +254,30 @@ export function useBoard() {
 
   // Initial fetch and adaptive polling
   useEffect(() => {
-    fetchBoard();
+    fetchBoard(true); // Force initial fetch
 
-    // Start with 5 second polling
-    let pollInterval = 5000;
-
-    const poll = () => {
-      fetchBoard();
-
-      // Increase polling frequency when close to round end
-      const timeRemaining = getTimeRemaining();
-      if (timeRemaining !== null && timeRemaining <= 15 && timeRemaining > 0) {
-        // Poll every 1 second when <15 seconds remaining
-        pollInterval = 1000;
-      } else if (timeRemaining !== null && timeRemaining <= 0) {
-        // Poll every 500ms when round should be ending
-        pollInterval = 500;
-      } else {
-        pollInterval = 5000;
-      }
-    };
-
-    // Use dynamic interval
+    // Use dynamic interval based on time remaining
     let timeoutId: NodeJS.Timeout;
+
     const schedulePoll = () => {
+      // Determine next poll interval based on time remaining
+      const timeRemaining = getTimeRemaining();
+      let pollInterval = NORMAL_POLL_INTERVAL;
+
+      if (timeRemaining !== null && timeRemaining <= 10 && timeRemaining > 0) {
+        // Poll faster when <10 seconds remaining (but still respecting min interval)
+        pollInterval = FAST_POLL_INTERVAL;
+      }
+
+      // Apply current backoff if it's higher
+      pollInterval = Math.max(pollInterval, backoffRef.current);
+
       timeoutId = setTimeout(() => {
-        poll();
+        fetchBoard();
         schedulePoll();
       }, pollInterval);
     };
+
     schedulePoll();
 
     return () => clearTimeout(timeoutId);

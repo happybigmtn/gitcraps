@@ -145,7 +145,7 @@ export function BotLeaderboard() {
           const sum = die1 + die2;
 
           if (sum !== 7) {
-            // Start new round for continuing epoch
+            // Start new round for continuing epoch (with delay to avoid rate limiting)
             setTimeout(async () => {
               if (useSimulationStore.getState().isRunning) {
                 try {
@@ -154,21 +154,22 @@ export function BotLeaderboard() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ duration: 150 }),
                   });
-                  await refetchBoard();
+                  // Don't call refetchBoard - the hook already polls
                   lastResolvedRoundRef.current = null;
                 } catch (e) {
                   console.error("Failed to start next round:", e);
                 }
               }
-            }, 2000);
+            }, 3000); // Increased delay to avoid rate limiting
           }
         }
       }
     };
 
-    const interval = setInterval(checkRoundEnd, 1000);
+    // Check every 3 seconds to reduce RPC pressure
+    const interval = setInterval(checkRoundEnd, 3000);
     return () => clearInterval(interval);
-  }, [isRunning, round, board, recordRoundResult, refetchBoard]);
+  }, [isRunning, round, board, recordRoundResult]);
 
   // Sort bots by CRAP earned
   const sortedBots = [...bots].sort((a, b) => b.crapEarned - a.crapEarned);
