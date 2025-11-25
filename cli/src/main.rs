@@ -465,7 +465,7 @@ async fn deploy(
     let square_id = std::env::var("SQUARE").expect("Missing SQUARE env var");
     let square_id = u64::from_str(&square_id).expect("Invalid SQUARE");
     let board = get_board(rpc).await?;
-    let mut squares = [false; 25];
+    let mut squares = [false; 36];
     squares[square_id as usize] = true;
     let ix = ore_api::sdk::deploy(
         payer.pubkey(),
@@ -485,7 +485,7 @@ async fn deploy_all(
     let amount = std::env::var("AMOUNT").expect("Missing AMOUNT env var");
     let amount = u64::from_str(&amount).expect("Invalid AMOUNT");
     let board = get_board(rpc).await?;
-    let squares = [true; 25];
+    let squares = [true; 36];
     let ix = ore_api::sdk::deploy(
         payer.pubkey(),
         payer.pubkey(),

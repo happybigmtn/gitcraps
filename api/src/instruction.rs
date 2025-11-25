@@ -52,7 +52,9 @@ pub struct ClaimORE {}
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Deploy {
     pub amount: [u8; 8],
-    pub squares: [u8; 4],
+    /// 64-bit bitmask for 36 dice combinations (6x6 grid).
+    /// Bits 0-35 represent squares, bits 36-63 are unused.
+    pub squares: [u8; 8],
 }
 
 #[repr(C)]

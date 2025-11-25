@@ -16,6 +16,7 @@ const-crypto.workspace = true
 entropy-api.workspace = true
 num_enum.workspace = true
 serde.workspace = true
+serde-big-array.workspace = true
 solana-program.workspace = true
 spl-token.workspace = true
 spl-token-2022.workspace = true

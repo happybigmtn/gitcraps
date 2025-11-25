@@ -26,8 +26,9 @@ pub struct Automation {
     /// The strategy this automation uses.
     pub strategy: u64,
 
-    /// The mask of squares this automation should deploy to if preferred strategy.
-    /// If strategy is Random, first bit is used to determine how many squares to deploy to.
+    /// The mask of dice combinations this automation should deploy to if preferred strategy.
+    /// Bits 0-35 represent the 36 dice combinations (6x6 grid).
+    /// If strategy is Random, lower 8 bits determine how many squares to deploy to.
     pub mask: u64,
 }
 

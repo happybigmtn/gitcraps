@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 use steel::*;
 
+use crate::consts::BOARD_SIZE;
 use crate::state::round_pda;
 
 use super::OreAccount;
@@ -11,19 +13,21 @@ pub struct Round {
     /// The round number.
     pub id: u64,
 
-    /// The amount of SOL deployed in each square.
-    pub deployed: [u64; 25],
+    /// The amount of RNG tokens deployed in each square (6x6 grid = 36 dice combinations).
+    #[serde(with = "BigArray")]
+    pub deployed: [u64; BOARD_SIZE],
 
     /// The hash of the end slot, provided by solana, used for random number generation.
     pub slot_hash: [u8; 32],
 
     /// The count of miners on each square.
-    pub count: [u64; 25],
+    #[serde(with = "BigArray")]
+    pub count: [u64; BOARD_SIZE],
 
     /// The slot at which claims for this round account end.
     pub expires_at: u64,
 
-    /// The amount of ORE in the motherlode.
+    /// The amount of CRAP tokens in the motherlode.
     pub motherlode: u64,
 
     /// The account to which rent should be returned when this account is closed.
@@ -32,16 +36,16 @@ pub struct Round {
     /// The top miner of the round.
     pub top_miner: Pubkey,
 
-    /// The amount of ORE to distribute to the top miner.
+    /// The amount of CRAP tokens to distribute to the top miner.
     pub top_miner_reward: u64,
 
-    /// The total amount of SOL deployed in the round.
+    /// The total amount of RNG tokens deployed in the round.
     pub total_deployed: u64,
 
-    /// The total amount of SOL put in the ORE vault.
+    /// The total amount of RNG tokens put in the vault.
     pub total_vaulted: u64,
 
-    /// The total amount of SOL won by miners for the round.
+    /// The total amount of RNG tokens won by miners for the round.
     pub total_winnings: u64,
 }
 
@@ -63,7 +67,7 @@ impl Round {
     }
 
     pub fn winning_square(&self, rng: u64) -> usize {
-        (rng % 25) as usize
+        (rng % BOARD_SIZE as u64) as usize
     }
 
     pub fn top_miner_sample(&self, rng: u64, winning_square: usize) -> u64 {

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 use steel::*;
 
+use crate::consts::BOARD_SIZE;
 use crate::state::{miner_pda, Treasury};
 
 use super::OreAccount;
@@ -11,11 +13,13 @@ pub struct Miner {
     /// The authority of this miner account.
     pub authority: Pubkey,
 
-    /// The miner's prospects in the current round.
-    pub deployed: [u64; 25],
+    /// The miner's prospects in the current round (6x6 grid = 36 dice combinations).
+    #[serde(with = "BigArray")]
+    pub deployed: [u64; BOARD_SIZE],
 
-    /// The cumulative amount of SOL deployed on each square prior to this miner's move.
-    pub cumulative: [u64; 25],
+    /// The cumulative amount of RNG tokens deployed on each square prior to this miner's move.
+    #[serde(with = "BigArray")]
+    pub cumulative: [u64; BOARD_SIZE],
 
     /// SOL witheld in reserve to pay for checkpointing.
     pub checkpoint_fee: u64,

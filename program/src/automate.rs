@@ -1,3 +1,4 @@
+use ore_api::consts::BOARD_SIZE;
 use ore_api::prelude::*;
 use steel::*;
 
@@ -30,8 +31,8 @@ pub fn process_automate(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramRes
         )?;
         let miner = miner_info.as_account_mut::<Miner>(&ore_api::ID)?;
         miner.authority = *signer_info.key;
-        miner.deployed = [0; 25];
-        miner.cumulative = [0; 25];
+        miner.deployed = [0; BOARD_SIZE];
+        miner.cumulative = [0; BOARD_SIZE];
         miner.checkpoint_fee = 0;
         miner.checkpoint_id = 0;
         miner.rewards_sol = 0;

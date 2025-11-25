@@ -1,16 +1,17 @@
 use entropy_api::state::Var;
+use ore_api::consts::BOARD_SIZE;
 use ore_api::prelude::*;
 use solana_program::{keccak::hashv, log::sol_log, native_token::lamports_to_sol, pubkey};
 use steel::*;
 
 pub const ORE_VAR_ADDRESS: Pubkey = pubkey!("BWCaDY96Xe4WkFq1M7UiCCRcChsJ3p51L5KrGzhxgm2E");
 
-/// Deploys capital to prospect on a square.
+/// Deploys RNG tokens to prospect on dice combinations.
 pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResult {
     // Parse data.
     let args = Deploy::try_from_bytes(data)?;
     let mut amount = u64::from_le_bytes(args.amount);
-    let mask = u32::from_le_bytes(args.squares);
+    let mask = u64::from_le_bytes(args.squares);
 
     // TODO Need config account...
 
@@ -77,7 +78,7 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
     };
 
     // Update amount and mask for automation.
-    let mut squares = [false; 25];
+    let mut squares = [false; BOARD_SIZE];
     if let Some(automation) = &automation {
         // Set amount
         amount = automation.amount;
@@ -86,21 +87,21 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         match AutomationStrategy::from_u64(automation.strategy as u64) {
             AutomationStrategy::Preferred => {
                 // Preferred automation strategy. Use the miner authority's provided mask.
-                for i in 0..25 {
+                for i in 0..BOARD_SIZE {
                     squares[i] = (automation.mask & (1 << i)) != 0;
                 }
             }
             AutomationStrategy::Random => {
                 // Random automation strategy. Generate a random mask based on number of squares user wants to deploy to.
-                let num_squares = ((automation.mask & 0xFF) as u64).min(25);
+                let num_squares = ((automation.mask & 0xFF) as u64).min(BOARD_SIZE as u64);
                 let r = hashv(&[&automation.authority.to_bytes(), &round.id.to_le_bytes()]).0;
                 squares = generate_random_mask(num_squares, &r);
             }
         }
     } else {
-        // Convert provided 32-bit mask into array of 25 booleans, where each bit in the mask
-        // determines if that square index is selected (true) or not (false)
-        for i in 0..25 {
+        // Convert provided 64-bit mask into array of 36 booleans, where each bit in the mask
+        // determines if that dice combination is selected (true) or not (false)
+        for i in 0..BOARD_SIZE {
             squares[i] = (mask & (1 << i)) != 0;
         }
     }
@@ -116,8 +117,8 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         )?;
         let miner = miner_info.as_account_mut::<Miner>(&ore_api::ID)?;
         miner.authority = *signer_info.key;
-        miner.deployed = [0; 25];
-        miner.cumulative = [0; 25];
+        miner.deployed = [0; BOARD_SIZE];
+        miner.cumulative = [0; BOARD_SIZE];
         miner.rewards_sol = 0;
         miner.rewards_ore = 0;
         miner.round_id = 0;
@@ -146,7 +147,7 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         );
 
         // Reset miner for new round.
-        miner.deployed = [0; 25];
+        miner.deployed = [0; BOARD_SIZE];
         miner.cumulative = round.deployed;
         miner.round_id = round.id;
     }
@@ -156,7 +157,7 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
     let mut total_squares = 0;
     for (square_id, &should_deploy) in squares.iter().enumerate() {
         // Skip if square index is out of bounds.
-        if square_id > 24 {
+        if square_id >= BOARD_SIZE {
             break;
         }
 
@@ -227,13 +228,14 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
     Ok(())
 }
 
-fn generate_random_mask(num_squares: u64, r: &[u8]) -> [bool; 25] {
-    let mut new_mask = [false; 25];
+fn generate_random_mask(num_squares: u64, r: &[u8]) -> [bool; BOARD_SIZE] {
+    let mut new_mask = [false; BOARD_SIZE];
     let mut selected = 0;
-    for i in 0..25 {
-        let rand_byte = r[i];
+    for i in 0..BOARD_SIZE {
+        // Use modulo to wrap around the 32-byte hash for squares 32-35
+        let rand_byte = r[i % 32];
         let remaining_needed = num_squares as u64 - selected as u64;
-        let remaining_positions = 25 - i;
+        let remaining_positions = BOARD_SIZE - i;
         if remaining_needed > 0
             && (rand_byte as u64) * (remaining_positions as u64) < (remaining_needed * 256)
         {

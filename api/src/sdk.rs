@@ -3,7 +3,7 @@ use spl_associated_token_account::get_associated_token_address;
 use steel::*;
 
 use crate::{
-    consts::{BOARD, MINT_ADDRESS, SOL_MINT, TREASURY_ADDRESS},
+    consts::{BOARD, BOARD_SIZE, MINT_ADDRESS, SOL_MINT, TREASURY_ADDRESS},
     instruction::*,
     state::*,
 };
@@ -99,7 +99,7 @@ pub fn deploy(
     authority: Pubkey,
     amount: u64,
     round_id: u64,
-    squares: [bool; 25],
+    squares: [bool; BOARD_SIZE],
 ) -> Instruction {
     let automation_address = automation_pda(authority).0;
     let board_address = board_pda().0;
@@ -107,9 +107,9 @@ pub fn deploy(
     let round_address = round_pda(round_id).0;
     let entropy_var_address = entropy_api::state::var_pda(board_address, 0).0;
 
-    // Convert array of 25 booleans into a 32-bit mask where each bit represents whether
+    // Convert array of 36 booleans into a 64-bit mask where each bit represents whether
     // that square index is selected (1) or not (0)
-    let mut mask: u32 = 0;
+    let mut mask: u64 = 0;
     for (i, &square) in squares.iter().enumerate() {
         if square {
             mask |= 1 << i;

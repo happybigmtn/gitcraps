@@ -1,4 +1,5 @@
 use entropy_api::state::Var;
+use ore_api::consts::BOARD_SIZE;
 use ore_api::prelude::*;
 use solana_program::{keccak, log::sol_log};
 use steel::*;
@@ -50,9 +51,9 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
     )?;
     let round_next = round_next_info.as_account_mut::<Round>(&ore_api::ID)?;
     round_next.id = board.round_id + 1;
-    round_next.deployed = [0; 25];
+    round_next.deployed = [0; BOARD_SIZE];
     round_next.slot_hash = [0; 32];
-    round_next.count = [0; 25];
+    round_next.count = [0; BOARD_SIZE];
     round_next.expires_at = u64::MAX; // Set to max, to indicate round is waiting for first deploy to begin.
     round_next.rent_payer = *signer_info.key;
     round_next.motherlode = 0;

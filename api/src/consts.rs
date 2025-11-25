@@ -78,11 +78,40 @@ const PROGRAM_ID: [u8; 32] = unsafe { *(&crate::id() as *const Pubkey as *const 
 pub const CONFIG_ADDRESS: Pubkey =
     Pubkey::new_from_array(ed25519::derive_program_address(&[CONFIG], &PROGRAM_ID).0);
 
-/// The address of the mint account.
+/// The address of the ORE mint account (mainnet).
 pub const MINT_ADDRESS: Pubkey = pubkey!("oreoU2P8bN6jkk3jbaiVxYnG1dCXcYxwhwyK9jSybcp");
 
 /// The address of the sol mint account.
 pub const SOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
+
+// ============================================================================
+// DEVNET TOKEN SYSTEM - RNG (staking) / CRAP (rewards)
+// ============================================================================
+
+/// The RNG token mint address (devnet).
+/// RNG is the universal staking token used across all games.
+/// Users stake RNG to play games and earn game-specific reward tokens.
+pub const RNG_MINT_ADDRESS: Pubkey = pubkey!("RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump");
+
+/// The CRAP token mint address (devnet).
+/// CRAP is the reward token for the OreCraps dice game.
+/// Earned by correctly predicting dice combinations.
+pub const CRAP_MINT_ADDRESS: Pubkey = pubkey!("CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump");
+
+/// The decimal precision of the RNG token.
+pub const RNG_TOKEN_DECIMALS: u8 = 9;
+
+/// The decimal precision of the CRAP token.
+pub const CRAP_TOKEN_DECIMALS: u8 = 9;
+
+/// One RNG token, denominated in indivisible units.
+pub const ONE_RNG: u64 = 10u64.pow(RNG_TOKEN_DECIMALS as u32);
+
+/// One CRAP token, denominated in indivisible units.
+pub const ONE_CRAP: u64 = 10u64.pow(CRAP_TOKEN_DECIMALS as u32);
+
+/// The maximum CRAP token supply (100 million for devnet testing).
+pub const MAX_CRAP_SUPPLY: u64 = ONE_CRAP * 100_000_000;
 
 /// The address to indicate ORE rewards are split between all miners.
 pub const SPLIT_ADDRESS: Pubkey = pubkey!("SpLiT11111111111111111111111111111111111112");
@@ -102,3 +131,6 @@ pub const BOOST_RESERVE_TOKEN: Pubkey = pubkey!("Gce36ZUsBDJsoLrfCBxUB5Sfq2DsGun
 
 /// The fee paid to bots if they checkpoint a user.
 pub const CHECKPOINT_FEE: u64 = 10_000; // 0.00001 SOL
+
+/// The number of squares on the board (6x6 grid for dice combinations).
+pub const BOARD_SIZE: usize = 36;
