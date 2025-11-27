@@ -22,6 +22,7 @@ mod set_fee_collector;
 mod set_swap_program;
 mod set_var_address;
 mod settle_craps;
+mod settle_single_roll;
 mod start_round;
 mod withdraw;
 mod wrap;

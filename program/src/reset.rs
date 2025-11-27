@@ -4,7 +4,7 @@ use ore_api::prelude::*;
 use solana_program::{keccak, log::sol_log};
 use steel::*;
 
-// TODO Integrate admin fee
+// TODO(#049): Integrate admin fee - tracked in todos/049
 
 /// Pays out the winners and block reward.
 pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResult {
@@ -226,7 +226,7 @@ pub fn process_reset(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResul
     }
 
     // Validate top miner.
-    // TODO Safety checks here (if no one won).
+    // TODO(#049): Safety checks here (if no one won) - tracked in todos/049
     // let mut top_miner_address = Pubkey::default();
     // let top_miner_sample = round.top_miner_sample(r, winning_square);
     // let top_miner = top_miner_info

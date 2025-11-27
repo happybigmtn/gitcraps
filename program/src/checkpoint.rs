@@ -3,7 +3,7 @@ use solana_program::{log::sol_log, native_token::lamports_to_sol, rent::Rent};
 use spl_token::amount_to_ui_amount;
 use steel::*;
 
-// TODO Integrate admin fee
+// TODO(#049): Integrate admin fee - tracked in todos/049
 
 /// Checkpoints a miner's rewards.
 pub fn process_checkpoint(accounts: &[AccountInfo<'_>], _data: &[u8]) -> ProgramResult {

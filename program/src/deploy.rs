@@ -13,7 +13,7 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
     let mut amount = u64::from_le_bytes(args.amount);
     let mask = u64::from_le_bytes(args.squares);
 
-    // TODO Need config account...
+    // TODO(#049): Need config account - tracked in todos/049
 
     // Load accounts.
     let clock = Clock::get()?;
