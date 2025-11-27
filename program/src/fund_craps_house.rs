@@ -55,7 +55,9 @@ pub fn process_fund_craps_house(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pr
     craps_game_info.collect(amount, &signer_info)?;
 
     // Update house bankroll.
-    craps_game.house_bankroll += amount;
+    craps_game.house_bankroll = craps_game.house_bankroll
+        .checked_add(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
 
     sol_log(&format!("House bankroll is now: {}", craps_game.house_bankroll).as_str());
 

@@ -66,6 +66,11 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         position
     } else {
         let position = craps_position_info.as_account_mut::<CrapsPosition>(&ore_api::ID)?;
+        // Verify signer is the position authority
+        if position.authority != *signer_info.key {
+            sol_log("Signer is not the position authority");
+            return Err(ProgramError::IllegalOwner);
+        }
         // If position is from old epoch, reset it.
         if position.epoch_id != craps_game.epoch_id {
             position.reset_for_epoch(craps_game.epoch_id);
