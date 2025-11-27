@@ -1,6 +1,8 @@
 mod automation;
 mod board;
 mod config;
+mod craps_game;
+mod craps_position;
 mod miner;
 mod round;
 mod stake;
@@ -9,6 +11,8 @@ mod treasury;
 pub use automation::*;
 pub use board::*;
 pub use config::*;
+pub use craps_game::*;
+pub use craps_position::*;
 pub use miner::*;
 pub use round::*;
 pub use stake::*;
@@ -28,6 +32,8 @@ pub enum OreAccount {
     Board = 105,
     Stake = 108,
     Round = 109,
+    CrapsGame = 110,
+    CrapsPosition = 111,
 }
 
 pub fn automation_pda(authority: Pubkey) -> (Pubkey, u8) {
@@ -60,4 +66,12 @@ pub fn treasury_pda() -> (Pubkey, u8) {
 
 pub fn treasury_tokens_address() -> Pubkey {
     spl_associated_token_account::get_associated_token_address(&TREASURY_ADDRESS, &MINT_ADDRESS)
+}
+
+pub fn craps_game_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[CRAPS_GAME], &crate::ID)
+}
+
+pub fn craps_position_pda(authority: Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[CRAPS_POSITION, &authority.to_bytes()], &crate::ID)
 }

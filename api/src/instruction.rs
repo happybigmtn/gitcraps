@@ -30,6 +30,12 @@ pub enum OreInstruction {
     NewVar = 19,
     SetAdminFee = 20,
     StartRound = 22,
+
+    // Craps
+    PlaceCrapsBet = 23,
+    SettleCraps = 24,
+    ClaimCrapsWinnings = 25,
+    FundCrapsHouse = 26,
 }
 
 #[repr(C)]
@@ -198,3 +204,78 @@ instruction!(OreInstruction, NewVar);
 instruction!(OreInstruction, SetAdminFee);
 instruction!(OreInstruction, SetSwapProgram);
 instruction!(OreInstruction, SetVarAddress);
+
+// ============================================================================
+// CRAPS INSTRUCTIONS
+// ============================================================================
+
+/// Craps bet type enum (encoded as u8).
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CrapsBetType {
+    // Line bets
+    PassLine = 0,
+    DontPass = 1,
+    PassOdds = 2,
+    DontPassOdds = 3,
+
+    // Come bets (point specified in data)
+    Come = 4,
+    DontCome = 5,
+    ComeOdds = 6,
+    DontComeOdds = 7,
+
+    // Place bets (point specified in data)
+    Place = 8,
+
+    // Hardways (hardway number specified in data)
+    Hardway = 9,
+
+    // Single-roll bets
+    Field = 10,
+    AnySeven = 11,
+    AnyCraps = 12,
+    YoEleven = 13,
+    Aces = 14,
+    Twelve = 15,
+}
+
+/// Place a craps bet.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct PlaceCrapsBet {
+    /// The bet type (CrapsBetType as u8).
+    pub bet_type: u8,
+    /// For Come/Place/Hardway bets: the point number (4,5,6,8,9,10).
+    pub point: u8,
+    /// Padding for alignment.
+    pub _padding: [u8; 6],
+    /// The amount to bet (in lamports).
+    pub amount: [u8; 8],
+}
+
+/// Settle craps bets after a round is complete.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct SettleCraps {
+    /// The winning square from the round.
+    pub winning_square: [u8; 8],
+}
+
+/// Claim craps winnings.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ClaimCrapsWinnings {}
+
+/// Fund the craps house bankroll (admin only).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct FundCrapsHouse {
+    /// Amount to deposit into house bankroll.
+    pub amount: [u8; 8],
+}
+
+instruction!(OreInstruction, PlaceCrapsBet);
+instruction!(OreInstruction, SettleCraps);
+instruction!(OreInstruction, ClaimCrapsWinnings);
+instruction!(OreInstruction, FundCrapsHouse);

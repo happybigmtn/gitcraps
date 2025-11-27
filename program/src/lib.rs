@@ -1,15 +1,19 @@
 mod automate;
 mod bury;
 mod checkpoint;
+mod claim_craps_winnings;
 mod claim_ore;
 mod claim_sol;
 mod claim_yield;
 mod close;
+mod craps_utils;
 mod deploy;
 mod deposit;
+mod fund_craps_house;
 mod initialize;
 mod log;
 mod new_var;
+mod place_craps_bet;
 mod recycle_sol;
 mod reset;
 mod set_admin;
@@ -17,6 +21,7 @@ mod set_admin_fee;
 mod set_fee_collector;
 mod set_swap_program;
 mod set_var_address;
+mod settle_craps;
 mod start_round;
 mod withdraw;
 mod wrap;
@@ -24,15 +29,18 @@ mod wrap;
 use automate::*;
 use bury::*;
 use checkpoint::*;
+use claim_craps_winnings::*;
 use claim_ore::*;
 use claim_sol::*;
 use claim_yield::*;
 use close::*;
 use deploy::*;
 use deposit::*;
+use fund_craps_house::*;
 use initialize::*;
 use log::*;
 use new_var::*;
+use place_craps_bet::*;
 use recycle_sol::*;
 use reset::*;
 use set_admin::*;
@@ -40,6 +48,7 @@ use set_admin_fee::*;
 use set_fee_collector::*;
 use set_swap_program::*;
 use set_var_address::*;
+use settle_craps::*;
 use start_round::*;
 use withdraw::*;
 use wrap::*;
@@ -82,6 +91,12 @@ pub fn process_instruction(
         OreInstruction::NewVar => process_new_var(accounts, data)?,
         OreInstruction::SetAdminFee => process_set_admin_fee(accounts, data)?,
         OreInstruction::StartRound => process_start_round(accounts, data)?,
+
+        // Craps
+        OreInstruction::PlaceCrapsBet => process_place_craps_bet(accounts, data)?,
+        OreInstruction::SettleCraps => process_settle_craps(accounts, data)?,
+        OreInstruction::ClaimCrapsWinnings => process_claim_craps_winnings(accounts, data)?,
+        OreInstruction::FundCrapsHouse => process_fund_craps_house(accounts, data)?,
     }
 
     Ok(())

@@ -66,8 +66,22 @@ impl Round {
         Some(r)
     }
 
-    pub fn winning_square(&self, rng: u64) -> usize {
-        (rng % BOARD_SIZE as u64) as usize
+    pub fn winning_square(&self, _rng: u64) -> usize {
+        // Use keccak hash for better distribution
+        let hash = solana_program::keccak::hash(&self.slot_hash);
+        let sample = u64::from_le_bytes(hash.to_bytes()[0..8].try_into().unwrap());
+
+        // Rejection sampling to eliminate modulo bias
+        let board_size = BOARD_SIZE as u64;
+        let max_valid = (u64::MAX / board_size) * board_size;
+        if sample < max_valid {
+            (sample % board_size) as usize
+        } else {
+            // Use hash of hash for retry (deterministic)
+            let hash2 = solana_program::keccak::hash(&hash.to_bytes());
+            let sample2 = u64::from_le_bytes(hash2.to_bytes()[0..8].try_into().unwrap());
+            (sample2 % board_size) as usize
+        }
     }
 
     pub fn top_miner_sample(&self, rng: u64, winning_square: usize) -> u64 {

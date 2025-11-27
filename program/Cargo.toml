@@ -16,6 +16,7 @@ name = "ore"
 
 [features]
 default = []
+debug = []
 
 [dependencies]
 bincode.workspace = true

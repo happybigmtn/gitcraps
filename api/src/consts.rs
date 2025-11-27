@@ -134,3 +134,76 @@ pub const CHECKPOINT_FEE: u64 = 10_000; // 0.00001 SOL
 
 /// The number of squares on the board (6x6 grid for dice combinations).
 pub const BOARD_SIZE: usize = 36;
+
+// ============================================================================
+// CRAPS GAME CONSTANTS
+// ============================================================================
+
+/// The seed of the craps game account PDA.
+pub const CRAPS_GAME: &[u8] = b"craps_game";
+
+/// The seed of the craps position account PDA.
+pub const CRAPS_POSITION: &[u8] = b"craps_position";
+
+/// Pass Line / Don't Pass payout ratio (1:1).
+pub const PASS_LINE_PAYOUT_NUM: u64 = 1;
+pub const PASS_LINE_PAYOUT_DEN: u64 = 1;
+
+/// Field bet payout (1:1 for most, 2:1 for 2 and 12).
+pub const FIELD_PAYOUT_NORMAL_NUM: u64 = 1;
+pub const FIELD_PAYOUT_NORMAL_DEN: u64 = 1;
+pub const FIELD_PAYOUT_2_12_NUM: u64 = 2;
+pub const FIELD_PAYOUT_2_12_DEN: u64 = 1;
+
+/// Any Seven payout (4:1).
+pub const ANY_SEVEN_PAYOUT_NUM: u64 = 4;
+pub const ANY_SEVEN_PAYOUT_DEN: u64 = 1;
+
+/// Any Craps payout (7:1).
+pub const ANY_CRAPS_PAYOUT_NUM: u64 = 7;
+pub const ANY_CRAPS_PAYOUT_DEN: u64 = 1;
+
+/// Yo Eleven payout (15:1).
+pub const YO_ELEVEN_PAYOUT_NUM: u64 = 15;
+pub const YO_ELEVEN_PAYOUT_DEN: u64 = 1;
+
+/// Aces (2) payout (30:1).
+pub const ACES_PAYOUT_NUM: u64 = 30;
+pub const ACES_PAYOUT_DEN: u64 = 1;
+
+/// Twelve payout (30:1).
+pub const TWELVE_PAYOUT_NUM: u64 = 30;
+pub const TWELVE_PAYOUT_DEN: u64 = 1;
+
+/// Place bet payouts (point -> numerator, denominator).
+/// Place 4 or 10: 9:5
+pub const PLACE_4_10_PAYOUT_NUM: u64 = 9;
+pub const PLACE_4_10_PAYOUT_DEN: u64 = 5;
+/// Place 5 or 9: 7:5
+pub const PLACE_5_9_PAYOUT_NUM: u64 = 7;
+pub const PLACE_5_9_PAYOUT_DEN: u64 = 5;
+/// Place 6 or 8: 7:6
+pub const PLACE_6_8_PAYOUT_NUM: u64 = 7;
+pub const PLACE_6_8_PAYOUT_DEN: u64 = 6;
+
+/// True odds payouts (for odds bets - 0% house edge).
+/// 4 or 10: 2:1
+pub const TRUE_ODDS_4_10_NUM: u64 = 2;
+pub const TRUE_ODDS_4_10_DEN: u64 = 1;
+/// 5 or 9: 3:2
+pub const TRUE_ODDS_5_9_NUM: u64 = 3;
+pub const TRUE_ODDS_5_9_DEN: u64 = 2;
+/// 6 or 8: 6:5
+pub const TRUE_ODDS_6_8_NUM: u64 = 6;
+pub const TRUE_ODDS_6_8_DEN: u64 = 5;
+
+/// Hardway payouts.
+/// Hard 4 or 10: 7:1
+pub const HARD_4_10_PAYOUT_NUM: u64 = 7;
+pub const HARD_4_10_PAYOUT_DEN: u64 = 1;
+/// Hard 6 or 8: 9:1
+pub const HARD_6_8_PAYOUT_NUM: u64 = 9;
+pub const HARD_6_8_PAYOUT_DEN: u64 = 1;
+
+/// Maximum single bet amount (100 SOL).
+pub const MAX_BET_AMOUNT: u64 = 100 * solana_program::native_token::LAMPORTS_PER_SOL;
