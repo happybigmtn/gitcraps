@@ -1,41 +1,103 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawnSync } from "child_process";
 import path from "path";
+import { handleApiError } from "@/lib/apiErrorHandler";
 
-const execAsync = promisify(exec);
+// Development-only debug logging (stripped in production)
+const debug = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log("[StartRound]", ...args);
+  }
+};
 
 // CLI path relative to the project root (workspace target directory)
 const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
 const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://devnet.helius-rpc.com/?api-key=22043299-7cbe-491c-995a-2e216e3a7cc7";
+const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
+const LOCALNET_RPC = "http://127.0.0.1:8899";
+
+// Generate a fair dice roll (two 6-sided dice) using cryptographically secure RNG
+function rollDice(): { die1: number; die2: number; sum: number; square: number } {
+  // Use crypto.getRandomValues() for secure random number generation
+  const randomBytes = new Uint32Array(2);
+  crypto.getRandomValues(randomBytes);
+
+  // Convert to 1-6 range
+  const die1 = (randomBytes[0] % 6) + 1;
+  const die2 = (randomBytes[1] % 6) + 1;
+  const sum = die1 + die2;
+  // Square index: (die1 - 1) * 6 + (die2 - 1)
+  const square = (die1 - 1) * 6 + (die2 - 1);
+  return { die1, die2, sum, square };
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const duration = body.duration || 300; // Default 300 slots (~2 minutes)
+    const network = body.network || "devnet";
+    // Simulated mode: default to true for localnet, can be overridden
+    const simulated = body.simulated !== undefined ? body.simulated : (network === "localnet");
 
-    console.log(`Starting round with duration ${duration} slots...`);
-    console.log(`CLI Path: ${CLI_PATH}`);
-    console.log(`Keypair: ${KEYPAIR_PATH}`);
+    const rpcEndpoint = network === "localnet" ? LOCALNET_RPC : DEVNET_RPC;
 
-    // Execute the CLI command
-    const command = `COMMAND=start_round DURATION=${duration} RPC="${RPC_ENDPOINT}" KEYPAIR="${KEYPAIR_PATH}" "${CLI_PATH}"`;
+    debug(`Starting round with duration ${duration} slots on ${network}...`);
+    debug(`Simulated: ${simulated}`);
 
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: 60000, // 60 second timeout
+    // Simulated mode - generate random dice roll without CLI
+    if (simulated) {
+      const roll = rollDice();
+      debug(`Simulated roll: ${roll.die1}-${roll.die2} = ${roll.sum} (square ${roll.square})`);
+
+      return NextResponse.json({
+        success: true,
+        message: "Simulated round completed",
+        simulated: true,
+        roll: {
+          die1: roll.die1,
+          die2: roll.die2,
+          sum: roll.sum,
+          square: roll.square,
+        },
+        signature: `sim_${Date.now().toString(36)}`,
+      });
+    }
+
+    debug(`CLI Path: ${CLI_PATH}`);
+    debug(`Keypair: ${KEYPAIR_PATH}`);
+    debug(`RPC: ${rpcEndpoint}`);
+
+    // Execute the CLI command using spawnSync for security (no shell interpolation)
+    const result = spawnSync(CLI_PATH, [], {
+      timeout: 60000,
+      encoding: 'utf-8',
       env: {
         ...process.env,
         COMMAND: "start_round",
         DURATION: String(duration),
-        RPC: RPC_ENDPOINT,
+        RPC: rpcEndpoint,
         KEYPAIR: KEYPAIR_PATH,
       },
     });
 
-    console.log("CLI stdout:", stdout);
+    const stdout = result.stdout || '';
+    const stderr = result.stderr || '';
+
+    debug("CLI stdout:", stdout);
     if (stderr) {
-      console.log("CLI stderr:", stderr);
+      debug("CLI stderr:", stderr);
+    }
+
+    // Check for execution errors
+    if (result.status !== 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "CLI command failed",
+          details: stderr,
+        },
+        { status: 500 }
+      );
     }
 
     // Parse signature from output if available
@@ -49,18 +111,6 @@ export async function POST(request: Request) {
       output: stdout,
     });
   } catch (error) {
-    console.error("Start round error:", error);
-
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    const stderr = (error as { stderr?: string }).stderr || "";
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: errorMessage,
-        details: stderr,
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

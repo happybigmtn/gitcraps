@@ -1,26 +1,21 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawnSync } from "child_process";
 import path from "path";
-
-const execAsync = promisify(exec);
+import { handleApiError } from "@/lib/apiErrorHandler";
 
 // CLI path relative to the project root (workspace target directory)
 const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
 const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://devnet.helius-rpc.com/?api-key=22043299-7cbe-491c-995a-2e216e3a7cc7";
+
+// SECURITY: RPC endpoint must come from environment variable, no hardcoded API keys
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
 
 export async function POST() {
   try {
-    console.log("Resetting round...");
-    console.log(`CLI Path: ${CLI_PATH}`);
-    console.log(`Keypair: ${KEYPAIR_PATH}`);
-
-    // Execute the CLI command
-    const command = `COMMAND=reset RPC="${RPC_ENDPOINT}" KEYPAIR="${KEYPAIR_PATH}" "${CLI_PATH}"`;
-
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: 60000, // 60 second timeout
+    // Execute the CLI command using spawnSync for security (no shell interpolation)
+    const result = spawnSync(CLI_PATH, [], {
+      timeout: 60000,
+      encoding: 'utf-8',
       env: {
         ...process.env,
         COMMAND: "reset",
@@ -29,9 +24,19 @@ export async function POST() {
       },
     });
 
-    console.log("CLI stdout:", stdout);
-    if (stderr) {
-      console.log("CLI stderr:", stderr);
+    const stdout = result.stdout || '';
+    const stderr = result.stderr || '';
+
+    // Check for execution errors
+    if (result.status !== 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "CLI command failed",
+          details: stderr,
+        },
+        { status: 500 }
+      );
     }
 
     // Parse signature from output if available
@@ -45,18 +50,6 @@ export async function POST() {
       output: stdout,
     });
   } catch (error) {
-    console.error("Reset round error:", error);
-
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    const stderr = (error as { stderr?: string }).stderr || "";
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: errorMessage,
-        details: stderr,
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

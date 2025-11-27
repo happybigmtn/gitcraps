@@ -117,6 +117,11 @@ export function DeployPanel({
       toast.info("Please confirm in your wallet...");
       const signature = await sendTransaction(transaction, connection);
 
+      // Validate signature
+      if (!signature || typeof signature !== 'string' || signature.length === 0) {
+        throw new Error('Invalid transaction signature received');
+      }
+
       toast.info("Confirming transaction...");
       await connection.confirmTransaction({
         signature,

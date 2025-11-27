@@ -1,8 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+
+// Development-only debug logging (stripped in production)
+const debug = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log("[BotLeaderboard]", ...args);
+  }
+};
 import { useSimulationStore, BONUS_BET_PAYOUTS } from "@/store/simulationStore";
 import { useBoard } from "@/hooks/useBoard";
+import { useNetworkStore } from "@/store/networkStore";
+import { useAnalyticsStore, EpochResult } from "@/store/analyticsStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,9 +37,34 @@ export function BotLeaderboard() {
   const [txError, setTxError] = useState<string | null>(null);
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
   const [txLoading, setTxLoading] = useState(false);
+  const [continuousMode, setContinuousMode] = useState(false);
+  const [targetEpochs, setTargetEpochs] = useState(10);
+  const [pendingAutoStart, setPendingAutoStart] = useState(false);
 
   const { round, board, refetch: refetchBoard } = useBoard();
   const lastResolvedRoundRef = useRef<bigint | null>(null);
+
+  // Use refs to avoid stale closure issues in callbacks
+  const continuousModeRef = useRef(continuousMode);
+  const targetEpochsRef = useRef(targetEpochs);
+  const txLoadingRef = useRef(txLoading);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    continuousModeRef.current = continuousMode;
+  }, [continuousMode]);
+
+  useEffect(() => {
+    targetEpochsRef.current = targetEpochs;
+  }, [targetEpochs]);
+
+  useEffect(() => {
+    txLoadingRef.current = txLoading;
+  }, [txLoading]);
+
+  // Network and analytics stores
+  const { network } = useNetworkStore();
+  const { startSession, recordEpoch, endSession, currentSession } = useAnalyticsStore();
 
   const {
     bots,
@@ -41,15 +75,28 @@ export function BotLeaderboard() {
     totalEpochs,
     lastWinningSquare,
     lastDiceRoll,
+    flashingWinnerBotIds,
+    flashingWinningSquare,
     startEpoch,
     recordRoundResult,
     resetBots,
     setOnChainState,
+    clearFlash,
   } = useSimulationStore();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Clear flash animation after 3 seconds
+  useEffect(() => {
+    if (flashingWinnerBotIds.length > 0 || flashingWinningSquare !== null) {
+      const timer = setTimeout(() => {
+        clearFlash();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [flashingWinnerBotIds, flashingWinningSquare, clearFlash]);
 
   // Sync with on-chain state
   useEffect(() => {
@@ -67,7 +114,7 @@ export function BotLeaderboard() {
       round.winningSquare !== null &&
       lastResolvedRoundRef.current !== round.id
     ) {
-      console.log(`Round ${round.id} resolved on-chain! Winning square: ${round.winningSquare}`);
+      debug(`Round ${round.id} resolved on-chain! Winning square: ${round.winningSquare}`);
       lastResolvedRoundRef.current = round.id;
       recordRoundResult(round.winningSquare);
 
@@ -77,12 +124,75 @@ export function BotLeaderboard() {
 
       if (sum === 7) {
         setTxSuccess(`7 OUT! Epoch ended. Dice: ${die1}-${die2}`);
+
+        // Record epoch to analytics
+        const currentState = useSimulationStore.getState();
+        const epochResult: EpochResult = {
+          epochNumber: currentState.totalEpochs,
+          rounds: currentState.epoch.roundsInEpoch,
+          uniqueSums: Array.from(currentState.epoch.uniqueSums),
+          rollHistory: currentState.epoch.rollHistory,
+          bonusMultiplier: currentState.epoch.bonusBetMultiplier,
+          timestamp: Date.now(),
+          totalRngStaked: currentState.bots.reduce((acc, bot) => acc + (bot.initialRngBalance - bot.rngBalance), 0),
+          totalCrapEarned: currentState.bots.reduce((acc, bot) => acc + bot.crapEarned, 0),
+          totalBonusCrap: currentState.bots.reduce((acc, bot) => acc + bot.bonusCrapEarned, 0),
+          winningSquares: [round.winningSquare],
+          botResults: currentState.bots.map((bot) => ({
+            botId: bot.id,
+            name: bot.name,
+            rngSpent: bot.initialRngBalance - bot.rngBalance,
+            crapEarned: bot.crapEarned,
+            bonusCrapEarned: bot.bonusCrapEarned,
+            roundsPlayed: bot.roundsPlayed,
+            roundsWon: bot.roundsWon,
+            strategy: bot.name,
+          })),
+        };
+        recordEpoch(epochResult);
+
+        // Auto-start next epoch if continuous mode is enabled
+        // Use refs to get current values, avoiding stale closure issues
+        const isContinuousMode = continuousModeRef.current;
+        const targetEpochsValue = targetEpochsRef.current;
+        const currentNetwork = useNetworkStore.getState().network;
+
+        debug(`[Continuous Mode Check] continuous=${isContinuousMode}, totalEpochs=${currentState.totalEpochs}, target=${targetEpochsValue}`);
+
+        if (isContinuousMode && currentState.totalEpochs < targetEpochsValue) {
+          // Faster auto-start on localnet (1s), slower on devnet (5s)
+          const autoStartDelay = currentNetwork === "localnet" ? 1000 : 5000;
+          debug(`Continuous mode: Will auto-start epoch ${currentState.totalEpochs + 1}/${targetEpochsValue} in ${autoStartDelay / 1000}s...`);
+          // Set flag to trigger auto-start after delay
+          setTimeout(() => {
+            // Double-check conditions before setting pendingAutoStart
+            const stillContinuous = continuousModeRef.current;
+            const stillUnderTarget = useSimulationStore.getState().totalEpochs < targetEpochsRef.current;
+            const notRunning = !useSimulationStore.getState().isRunning;
+            const notLoading = !txLoadingRef.current;
+
+            debug(`[Auto-start timeout] stillContinuous=${stillContinuous}, stillUnderTarget=${stillUnderTarget}, notRunning=${notRunning}, notLoading=${notLoading}`);
+
+            if (stillContinuous && stillUnderTarget && notRunning && notLoading) {
+              debug("Setting pendingAutoStart=true");
+              setPendingAutoStart(true);
+            } else {
+              debug("Skipping auto-start: conditions no longer met");
+            }
+          }, autoStartDelay);
+        } else if (isContinuousMode && currentState.totalEpochs >= targetEpochsValue) {
+          debug(`Continuous mode: Reached target of ${targetEpochsValue} epochs!`);
+          setContinuousMode(false);
+          setTxSuccess(`Completed ${targetEpochsValue} epochs!`);
+        }
       } else {
         setTxSuccess(`Dice: ${die1}-${die2} (Sum: ${sum})`);
       }
       setTimeout(() => setTxSuccess(null), 3000);
     }
-  }, [round, board, isRunning, recordRoundResult]);
+  // Note: We use refs for continuousMode and targetEpochs to avoid stale closures
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [round, board, isRunning, recordRoundResult, recordEpoch]);
 
   // Handle starting a new epoch
   const handleStartEpoch = useCallback(async () => {
@@ -93,11 +203,11 @@ export function BotLeaderboard() {
     try {
       const duration = 150; // 150 slots = ~1 minute per round
 
-      console.log("Calling start-round API...");
+      debug(`Calling start-round API on ${network}...`);
       const response = await fetch("/api/start-round", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ duration }),
+        body: JSON.stringify({ duration, network }),
       });
 
       const data = await response.json();
@@ -106,7 +216,105 @@ export function BotLeaderboard() {
         throw new Error(data.error || data.details || "Failed to start round");
       }
 
-      console.log("Round started:", data);
+      debug("Round started:", data);
+
+      // Start analytics session if not already running
+      if (!currentSession) {
+        const programId = "JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK";
+        startSession(network, programId, 1);
+      }
+
+      // Handle simulated response - run full epoch simulation locally
+      if (data.simulated && data.roll) {
+        debug(`Simulated mode: running epoch locally...`);
+
+        // Start the epoch (deploys bets for all bots)
+        startEpoch();
+
+        // Process rolls until we get a 7
+        let currentRoll = data.roll;
+        let rollCount = 0;
+        const maxRolls = 100; // Safety limit
+
+        while (currentRoll.sum !== 7 && rollCount < maxRolls) {
+          debug(`Simulated roll #${rollCount + 1}: ${currentRoll.die1}-${currentRoll.die2} = ${currentRoll.sum} (square ${currentRoll.square})`);
+          recordRoundResult(currentRoll.square);
+          setTxSuccess(`Dice: ${currentRoll.die1}-${currentRoll.die2} (Sum: ${currentRoll.sum})`);
+
+          rollCount++;
+
+          // Add small delay for UI updates
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Get next roll
+          const nextResponse = await fetch("/api/start-round", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ duration, network, simulated: true }),
+          });
+          const nextData = await nextResponse.json();
+          if (nextData.simulated && nextData.roll) {
+            currentRoll = nextData.roll;
+          } else {
+            break;
+          }
+        }
+
+        // Process final roll (the 7)
+        if (currentRoll.sum === 7) {
+          debug(`Simulated roll #${rollCount + 1}: ${currentRoll.die1}-${currentRoll.die2} = 7 (7 OUT!)`);
+          recordRoundResult(currentRoll.square);
+          setTxSuccess(`7 OUT! Epoch ended. Dice: ${currentRoll.die1}-${currentRoll.die2}`);
+
+          // Record epoch to analytics
+          const currentState = useSimulationStore.getState();
+          const epochResult: EpochResult = {
+            epochNumber: currentState.totalEpochs,
+            rounds: currentState.epoch.roundsInEpoch,
+            uniqueSums: Array.from(currentState.epoch.uniqueSums),
+            rollHistory: currentState.epoch.rollHistory,
+            bonusMultiplier: currentState.epoch.bonusBetMultiplier,
+            timestamp: Date.now(),
+            totalRngStaked: currentState.bots.reduce((acc, bot) => acc + (bot.initialRngBalance - bot.rngBalance), 0),
+            totalCrapEarned: currentState.bots.reduce((acc, bot) => acc + bot.crapEarned, 0),
+            totalBonusCrap: currentState.bots.reduce((acc, bot) => acc + bot.bonusCrapEarned, 0),
+            winningSquares: [currentRoll.square],
+            botResults: currentState.bots.map((bot) => ({
+              botId: bot.id,
+              name: bot.name,
+              rngSpent: bot.initialRngBalance - bot.rngBalance,
+              crapEarned: bot.crapEarned,
+              bonusCrapEarned: bot.bonusCrapEarned,
+              roundsPlayed: bot.roundsPlayed,
+              roundsWon: bot.roundsWon,
+              strategy: bot.name,
+            })),
+          };
+          recordEpoch(epochResult);
+
+          // Auto-start next epoch if continuous mode is enabled
+          const isContinuousMode = continuousModeRef.current;
+          const targetEpochsValue = targetEpochsRef.current;
+
+          debug(`[Simulated Continuous Mode Check] continuous=${isContinuousMode}, totalEpochs=${currentState.totalEpochs}, target=${targetEpochsValue}`);
+
+          if (isContinuousMode && currentState.totalEpochs < targetEpochsValue) {
+            debug(`Continuous mode: Auto-starting next epoch in 500ms...`);
+            setTimeout(() => {
+              setPendingAutoStart(true);
+            }, 500);
+          } else if (isContinuousMode && currentState.totalEpochs >= targetEpochsValue) {
+            debug(`Continuous mode: Reached target of ${targetEpochsValue} epochs!`);
+            setContinuousMode(false);
+            setTxSuccess(`Completed ${targetEpochsValue} epochs!`);
+          }
+        }
+
+        setTimeout(() => setTxSuccess(null), 3000);
+        return;
+      }
+
+      // Non-simulated mode: normal on-chain flow
       setTxSuccess("Epoch started!");
 
       // Refetch board data and reset round ref
@@ -124,7 +332,27 @@ export function BotLeaderboard() {
     } finally {
       setTxLoading(false);
     }
-  }, [refetchBoard, startEpoch]);
+  }, [refetchBoard, startEpoch, network, currentSession, startSession, recordRoundResult, recordEpoch]);
+
+  // Handle pendingAutoStart flag for continuous mode
+  // Use a ref for handleStartEpoch to avoid stale closure issues
+  const handleStartEpochRef = useRef(handleStartEpoch);
+  useEffect(() => {
+    handleStartEpochRef.current = handleStartEpoch;
+  }, [handleStartEpoch]);
+
+  useEffect(() => {
+    debug(`[pendingAutoStart effect] pendingAutoStart=${pendingAutoStart}, isRunning=${isRunning}, txLoading=${txLoading}`);
+    if (pendingAutoStart && !isRunning && !txLoading) {
+      setPendingAutoStart(false);
+      debug("Continuous mode: Auto-starting next epoch...");
+      // Use the ref to call the latest version of handleStartEpoch
+      handleStartEpochRef.current().catch((err) => {
+        console.error("Auto-start epoch failed:", err);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoStart, isRunning, txLoading]);
 
   // Auto-start next round when current round ends (within same epoch)
   useEffect(() => {
@@ -135,8 +363,11 @@ export function BotLeaderboard() {
       if (round.winningSquare === null && board) {
         const timeRemaining = Number(round.expiresAt) - Number(board.currentSlot);
         if (timeRemaining < -2) { // Round expired (2 slots grace period)
-          console.log("Round expired, simulating local dice roll...");
-          const localWinningSquare = Math.floor(Math.random() * 36);
+          debug("Round expired, simulating local dice roll...");
+          // Use crypto.getRandomValues() for secure random number generation
+          const randomBytes = new Uint32Array(1);
+          crypto.getRandomValues(randomBytes);
+          const localWinningSquare = randomBytes[0] % 36;
           recordRoundResult(localWinningSquare);
 
           // If epoch continues, start new on-chain round
@@ -146,13 +377,16 @@ export function BotLeaderboard() {
 
           if (sum !== 7) {
             // Start new round for continuing epoch (with delay to avoid rate limiting)
+            // Use shorter delay on localnet since there's no rate limiting
+            const currentNetwork = useNetworkStore.getState().network;
+            const nextRoundDelay = currentNetwork === "localnet" ? 500 : 3000;
             setTimeout(async () => {
               if (useSimulationStore.getState().isRunning) {
                 try {
                   await fetch("/api/start-round", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ duration: 150 }),
+                    body: JSON.stringify({ duration: 150, network: currentNetwork }),
                   });
                   // Don't call refetchBoard - the hook already polls
                   lastResolvedRoundRef.current = null;
@@ -160,16 +394,17 @@ export function BotLeaderboard() {
                   console.error("Failed to start next round:", e);
                 }
               }
-            }, 3000); // Increased delay to avoid rate limiting
+            }, nextRoundDelay);
           }
         }
       }
     };
 
-    // Check every 10 seconds to reduce RPC pressure
-    const interval = setInterval(checkRoundEnd, 10000);
+    // Check faster on localnet (1 second), slower on devnet (10 seconds)
+    const checkInterval = network === "localnet" ? 1000 : 10000;
+    const interval = setInterval(checkRoundEnd, checkInterval);
     return () => clearInterval(interval);
-  }, [isRunning, round, board, recordRoundResult]);
+  }, [isRunning, round, board, recordRoundResult, network]);
 
   // Sort bots by CRAP earned
   const sortedBots = [...bots].sort((a, b) => b.crapEarned - a.crapEarned);
@@ -255,6 +490,36 @@ export function BotLeaderboard() {
           </div>
         )}
 
+        {/* Continuous Mode Control */}
+        <div className="flex items-center justify-between bg-secondary/30 rounded p-2 mb-2">
+          <label className="flex items-center gap-2 text-xs cursor-pointer" htmlFor="continuous-mode">
+            <input
+              id="continuous-mode"
+              type="checkbox"
+              checked={continuousMode}
+              onChange={(e) => setContinuousMode(e.target.checked)}
+              disabled={isRunning}
+              className="w-3 h-3 rounded"
+            />
+            <span className={continuousMode ? "text-primary" : "text-muted-foreground"}>
+              Continuous Mode
+            </span>
+          </label>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Target:</span>
+            <input
+              type="number"
+              value={targetEpochs}
+              onChange={(e) => setTargetEpochs(Math.max(1, parseInt(e.target.value) || 1))}
+              disabled={isRunning}
+              className="w-10 h-5 text-[10px] text-center bg-background border rounded px-1"
+              min={1}
+              max={100}
+            />
+            <span className="text-[10px] text-muted-foreground">epochs</span>
+          </div>
+        </div>
+
         {/* Epoch Progress / Bonus Bet Tracker */}
         {isRunning && (
           <div className="bg-secondary/50 rounded p-2 mb-2">
@@ -315,24 +580,29 @@ export function BotLeaderboard() {
         {/* Leaderboard table */}
         <div className="space-y-1">
           {sortedBots.map((bot, index) => {
-            const rngLost = bot.initialRngBalance - bot.rngBalance;
+            const netRngChange = bot.rngBalance - bot.initialRngBalance;
             const winRate =
               bot.roundsPlayed > 0
                 ? ((bot.roundsWon / bot.roundsPlayed) * 100).toFixed(0)
                 : "0";
+            const isFlashing = flashingWinnerBotIds.includes(bot.id);
 
             return (
               <div
                 key={bot.id}
                 className={cn(
-                  "flex items-center justify-between py-1 px-2 rounded text-xs",
+                  "flex items-center justify-between py-1 px-2 rounded text-xs transition-all duration-300",
                   index === 0 && bot.crapEarned > 0 && "bg-green-500/10",
-                  index === sortedBots.length - 1 && rngLost > 0 && bot.crapEarned === 0 && "bg-red-500/10"
+                  index === sortedBots.length - 1 && netRngChange < 0 && bot.crapEarned === 0 && "bg-red-500/10",
+                  isFlashing && "animate-pulse bg-yellow-500/30 ring-2 ring-yellow-500/50"
                 )}
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-2 h-2 rounded-full"
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-all duration-300",
+                      isFlashing && "w-3 h-3"
+                    )}
                     style={{ backgroundColor: bot.color }}
                   />
                   <span className="font-medium w-16 truncate">{bot.name.replace(" Bot", "")}</span>
@@ -346,8 +616,14 @@ export function BotLeaderboard() {
                       {bot.deployedSquares.length}sq
                     </span>
                   )}
-                  <span className="font-mono text-[10px] text-muted-foreground w-10">
-                    {bot.rngBalance.toFixed(0)}R
+                  {/* Net RNG Change */}
+                  <span
+                    className={cn(
+                      "font-mono text-[10px] w-12 text-right",
+                      netRngChange > 0 ? "text-green-500" : netRngChange < 0 ? "text-red-400" : "text-muted-foreground"
+                    )}
+                  >
+                    {netRngChange >= 0 ? "+" : ""}{netRngChange.toFixed(0)}R
                   </span>
                   <span
                     className={cn(
@@ -361,6 +637,9 @@ export function BotLeaderboard() {
                   </span>
                   {bot.bonusCrapEarned > 0 && (
                     <Sparkles className="h-3 w-3 text-yellow-500" />
+                  )}
+                  {isFlashing && (
+                    <span className="text-yellow-500 text-[10px] font-bold animate-bounce">WIN!</span>
                   )}
                 </div>
               </div>
@@ -387,9 +666,12 @@ export function BotLeaderboard() {
 
         {/* Total Stats */}
         <div className="flex items-center justify-between mt-2 pt-2 border-t text-xs">
-          <span className="text-muted-foreground">RNG Spent</span>
-          <span className="font-mono text-red-400">
-            -{totalRngSpent.toFixed(0)} RNG
+          <span className="text-muted-foreground">Net RNG Change</span>
+          <span className={cn(
+            "font-mono",
+            totalRngSpent > 0 ? "text-red-400" : totalRngSpent < 0 ? "text-green-500" : "text-muted-foreground"
+          )}>
+            {totalRngSpent <= 0 ? "+" : "-"}{Math.abs(totalRngSpent).toFixed(0)} RNG
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">

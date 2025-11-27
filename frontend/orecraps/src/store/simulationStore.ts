@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 // Bot strategies
 export type BotStrategy = "lucky7" | "field" | "random" | "doubles" | "diversified";
@@ -69,6 +70,10 @@ interface SimulationState {
   roundExpiresAt: number | null; // On-chain slot
   currentSlot: number | null;
 
+  // Winning animation state (for 3-second flash)
+  flashingWinningSquare: number | null;
+  flashingWinnerBotIds: string[];
+
   // Actions
   initializeBots: () => void;
   startEpoch: () => void;
@@ -79,6 +84,7 @@ interface SimulationState {
   setError: (error: string | null) => void;
   setLoading: (loading: boolean) => void;
   setOnChainState: (expiresAt: number, currentSlot: number) => void;
+  clearFlash: () => void;
 }
 
 // Convert square index to dice sum
@@ -121,8 +127,10 @@ const getSquaresForStrategy = (strategy: BotStrategy): number[] => {
       // Field bets (2,3,4,9,10,11,12) - lower probability squares
       return [0, 1, 6, 4, 9, 28, 34, 35, 29]; // 2,3,4,9,10,11,12 combinations
     case "random":
-      // Random single square
-      return [Math.floor(Math.random() * 36)];
+      // Random single square using crypto.getRandomValues()
+      const randomBytes = new Uint32Array(1);
+      crypto.getRandomValues(randomBytes);
+      return [randomBytes[0] % 36];
     case "doubles":
       // All doubles (1,1)(2,2)(3,3)(4,4)(5,5)(6,6)
       return [0, 7, 14, 21, 28, 35];
@@ -247,7 +255,9 @@ const DEFAULT_EPOCH: EpochState = {
   bonusBetMultiplier: 0,
 };
 
-export const useSimulationStore = create<SimulationState>((set, get) => ({
+export const useSimulationStore = create<SimulationState>()(
+  persist(
+    (set, get) => ({
   bots: DEFAULT_BOTS,
   epoch: { ...DEFAULT_EPOCH, uniqueSums: new Set() },
   isRunning: false,
@@ -260,6 +270,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   lastDiceRoll: null,
   roundExpiresAt: null,
   currentSlot: null,
+  flashingWinningSquare: null,
+  flashingWinnerBotIds: [],
 
   initializeBots: () => {
     set({
@@ -335,15 +347,44 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     // Calculate new bonus multiplier
     const bonusMultiplier = getBonusMultiplier(newUniqueSums.size);
 
-    // Process bets for each bot
-    const updatedBots = bots.map((bot) => {
+    // Calculate pari-mutuel pool distribution
+    // Total RNG pool = all RNG staked this round by all bots
+    const totalPool = bots.reduce((acc, bot) => acc + bot.totalDeployed, 0);
+
+    // Calculate total RNG staked on the winning square by all bots
+    // Each bot's stake on a square = totalDeployed / deployedSquares.length (evenly spread)
+    const winningSquareStakes = bots.map((bot) => {
+      if (!bot.deployedSquares.includes(winningSquare)) return 0;
+      return bot.totalDeployed / bot.deployedSquares.length;
+    });
+    const totalWinningSquareStake = winningSquareStakes.reduce((acc, stake) => acc + stake, 0);
+
+    // Process bets for each bot using pari-mutuel distribution
+    const updatedBots = bots.map((bot, index) => {
       const won = bot.deployedSquares.includes(winningSquare);
-      const rngRefund = won ? bot.totalDeployed : 0;
-      const crapReward = won ? (36 / bot.deployedSquares.length) * bot.totalDeployed : 0;
+      const botStakeOnWinningSquare = winningSquareStakes[index];
+
+      // Pari-mutuel distribution:
+      // - Winners share the entire pool proportionally to their stake on the winning square
+      // - RNG refund = their share of the pool (replaces fixed refund + reward)
+      // - CRAP earned = the profit portion (pool share minus original stake on winning square)
+      let rngPayout = 0;
+      let crapReward = 0;
+
+      if (won && totalWinningSquareStake > 0) {
+        // Winner's share of the entire pool
+        const poolShare = (botStakeOnWinningSquare / totalWinningSquareStake) * totalPool;
+        // RNG they get back = pool share
+        rngPayout = poolShare;
+        // CRAP reward = the profit (pool share - their original total stake)
+        // Note: In true pari-mutuel, they lose their non-winning bets but win from the pool
+        // CRAP represents the net gain from the round
+        crapReward = Math.max(0, poolShare - bot.totalDeployed);
+      }
 
       return {
         ...bot,
-        rngBalance: bot.rngBalance + rngRefund,
+        rngBalance: bot.rngBalance + rngPayout,
         crapEarned: bot.crapEarned + crapReward,
         lifetimeCrapEarned: bot.lifetimeCrapEarned + crapReward,
         roundsWon: bot.roundsWon + (won ? 1 : 0),
@@ -351,6 +392,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         totalDeployed: 0,
       };
     });
+
+    // Identify winning bot IDs for flash animation
+    const winningBotIds = bots
+      .filter(bot => bot.deployedSquares.includes(winningSquare))
+      .map(bot => bot.id);
 
     // Check if epoch ends (7 rolled)
     const epochEnds = isSeven(winningSquare);
@@ -383,6 +429,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         isRunning: false,
         lastWinningSquare: winningSquare,
         lastDiceRoll: diceRoll,
+        flashingWinningSquare: winningSquare,
+        flashingWinnerBotIds: winningBotIds,
       });
     } else {
       // Epoch continues - place new bets
@@ -396,6 +444,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         },
         lastWinningSquare: winningSquare,
         lastDiceRoll: diceRoll,
+        flashingWinningSquare: winningSquare,
+        flashingWinnerBotIds: winningBotIds,
       });
 
       // Auto-place bets for next round
@@ -433,7 +483,38 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       currentSlot: currentSlot,
     });
   },
-}));
+
+  clearFlash: () => {
+    set({
+      flashingWinningSquare: null,
+      flashingWinnerBotIds: [],
+    });
+  },
+}),
+{
+  name: "orecraps-simulation",
+  storage: createJSONStorage(() => localStorage),
+  // Handle Set serialization for uniqueSums
+  partialize: (state) => ({
+    bots: state.bots,
+    epoch: {
+      ...state.epoch,
+      uniqueSums: Array.from(state.epoch.uniqueSums),
+    },
+    currentRound: state.currentRound,
+    totalEpochs: state.totalEpochs,
+    lastWinningSquare: state.lastWinningSquare,
+    lastDiceRoll: state.lastDiceRoll,
+  }),
+  // Rehydrate: convert uniqueSums array back to Set
+  onRehydrateStorage: () => (state) => {
+    if (state && state.epoch && Array.isArray(state.epoch.uniqueSums)) {
+      // Safe type guard: only convert if it's actually an array
+      state.epoch.uniqueSums = new Set(state.epoch.uniqueSums);
+    }
+  },
+}
+));
 
 // Selectors
 export const useBotsWithBets = () =>
