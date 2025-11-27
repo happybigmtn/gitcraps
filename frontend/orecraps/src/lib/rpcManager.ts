@@ -1,11 +1,7 @@
 import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { createDebugger } from "@/lib/debug";
 
-// Development-only debug logging (stripped in production)
-const debug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[RPC]", ...args);
-  }
-};
+const debug = createDebugger("RPC");
 
 export type NetworkMode = "localnet" | "devnet";
 

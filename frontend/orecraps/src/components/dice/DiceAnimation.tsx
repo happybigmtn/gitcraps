@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { DICE_FACES } from "@/lib/dice";
+import { DICE_FACE_PATTERNS } from "@/lib/dice";
 
 interface DiceAnimationProps {
   die1: number;
@@ -13,7 +13,7 @@ interface DiceAnimationProps {
 }
 
 function DiceFace({ value, size = 64 }: { value: number; size?: number }) {
-  const dots = DICE_FACES[value] || [];
+  const dots = DICE_FACE_PATTERNS[value] || [];
 
   return (
     <div

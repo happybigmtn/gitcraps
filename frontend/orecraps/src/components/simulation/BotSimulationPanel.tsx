@@ -29,8 +29,8 @@ const STRATEGY_NAMES: Record<string, string> = {
 
 // Bot card component
 function BotCard({ bot }: { bot: Bot }) {
-  const pnl = bot.balance - bot.initialBalance;
-  const pnlPercent = ((pnl / bot.initialBalance) * 100).toFixed(1);
+  const pnl = bot.rngBalance - bot.initialRngBalance;
+  const pnlPercent = ((pnl / bot.initialRngBalance) * 100).toFixed(1);
   const winRate =
     bot.roundsPlayed > 0
       ? ((bot.roundsWon / bot.roundsPlayed) * 100).toFixed(0)
@@ -66,7 +66,7 @@ function BotCard({ bot }: { bot: Bot }) {
             <span className="text-xs text-muted-foreground">Balance</span>
             <div className="flex items-center gap-1">
               <span className="font-mono font-bold">
-                {bot.balance.toFixed(4)} SOL
+                {bot.rngBalance.toFixed(4)} RNG
               </span>
               {pnl !== 0 && (
                 <span
@@ -151,8 +151,7 @@ export function BotSimulationPanel() {
     isRunning,
     isLoading,
     currentRound,
-    startSimulation,
-    stopSimulation,
+    startEpoch,
     resetBots,
     error,
   } = useSimulationStore();
@@ -162,7 +161,7 @@ export function BotSimulationPanel() {
   }, []);
 
   const totalPnl = bots.reduce(
-    (acc, bot) => acc + (bot.balance - bot.initialBalance),
+    (acc, bot) => acc + (bot.rngBalance - bot.initialRngBalance),
     0
   );
 
@@ -203,7 +202,7 @@ export function BotSimulationPanel() {
         {/* Control buttons */}
         <div className="flex gap-2">
           <Button
-            onClick={startSimulation}
+            onClick={startEpoch}
             disabled={isRunning || isLoading}
             className="flex-1"
             variant={isRunning ? "secondary" : "default"}

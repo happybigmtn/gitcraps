@@ -1,14 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// Development-only debug logging (stripped in production)
-const debug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[BotLeaderboard]", ...args);
-  }
-};
+import { createDebugger } from "@/lib/debug";
+import { squareToDice } from "@/lib/dice";
 import { useSimulationStore, BONUS_BET_PAYOUTS } from "@/store/simulationStore";
+
+const debug = createDebugger("BotLeaderboard");
 import { useBoard } from "@/hooks/useBoard";
 import { useNetworkStore } from "@/store/networkStore";
 import { useAnalyticsStore, EpochResult } from "@/store/analyticsStore";
@@ -118,8 +115,7 @@ export function BotLeaderboard() {
       lastResolvedRoundRef.current = round.id;
       recordRoundResult(round.winningSquare);
 
-      const die1 = Math.floor(round.winningSquare / 6) + 1;
-      const die2 = (round.winningSquare % 6) + 1;
+      const [die1, die2] = squareToDice(round.winningSquare);
       const sum = die1 + die2;
 
       if (sum === 7) {
@@ -371,8 +367,7 @@ export function BotLeaderboard() {
           recordRoundResult(localWinningSquare);
 
           // If epoch continues, start new on-chain round
-          const die1 = Math.floor(localWinningSquare / 6) + 1;
-          const die2 = (localWinningSquare % 6) + 1;
+          const [die1, die2] = squareToDice(localWinningSquare);
           const sum = die1 + die2;
 
           if (sum !== 7) {

@@ -3,9 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { formatTimeRemaining, slotsToSeconds } from "@/lib/solana";
-import { Clock, Play, Pause } from "lucide-react";
+import { Clock } from "lucide-react";
 
 interface RoundTimerProps {
   roundId?: number;
@@ -35,19 +34,18 @@ export function RoundTimer({
     }
   }, [endSlot, currentSlot]);
 
-  // Smooth countdown between slot updates
-  // Decrements based on elapsed real time since last slot update
+  // Smooth countdown between slot updates - interval created only once on mount
   useEffect(() => {
-    if (baseTimeRef.current <= 0) return;
-
     const interval = setInterval(() => {
+      if (baseTimeRef.current <= 0) return;
+
       const elapsedSinceUpdate = (Date.now() - lastSlotUpdateRef.current) / 1000;
       const estimatedRemaining = Math.max(0, baseTimeRef.current - elapsedSinceUpdate);
       setTimeRemaining(estimatedRemaining);
-    }, 100); // Update display every 100ms for smooth countdown
+    }, 100);
 
     return () => clearInterval(interval);
-  }, [currentSlot]); // Re-run when currentSlot changes
+  }, []); // Empty deps - created once
 
   const isActive = timeRemaining > 0;
   const isUrgent = timeRemaining > 0 && timeRemaining <= 10;
@@ -58,21 +56,13 @@ export function RoundTimer({
   const progress = totalSlots > 0 ? Math.min(100, (elapsedSlots / totalSlots) * 100) : 0;
 
   return (
-    <Card className={isUrgent ? "border-destructive" : ""}>
+    <Card className="overflow-hidden">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           {/* Round Info */}
           <div className="flex items-center gap-3">
-            <div
-              className={`p-2 rounded-full ${
-                isActive ? "bg-green-500/20" : "bg-muted"
-              }`}
-            >
-              {isActive ? (
-                <Play className="h-4 w-4 text-green-500" />
-              ) : (
-                <Pause className="h-4 w-4 text-muted-foreground" />
-              )}
+            <div className={`p-2.5 rounded-xl ${isActive ? "bg-primary/10" : "bg-muted"}`}>
+              <div className={`w-2 h-2 rounded-full ${isActive ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`} />
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Round</div>
@@ -86,43 +76,32 @@ export function RoundTimer({
               <Clock className="h-3 w-3" />
               Time Remaining
             </div>
-            <motion.div
-              className={`font-mono text-3xl font-bold ${
-                isUrgent ? "text-destructive" : ""
-              }`}
-              animate={isUrgent ? { scale: [1, 1.05, 1] } : {}}
-              transition={{ duration: 0.5, repeat: Infinity }}
-            >
+            <div className={`font-mono text-3xl font-bold tabular-nums ${isUrgent ? "text-orange-500" : ""}`}>
               {formatTimeRemaining(timeRemaining)}
-            </motion.div>
+            </div>
           </div>
         </div>
 
         {/* Progress Bar */}
         <div className="mt-4">
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
+          <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
             <motion.div
-              className={`h-full ${isUrgent ? "bg-destructive" : "bg-primary"}`}
+              className={`h-full rounded-full ${isUrgent ? "bg-orange-500" : "bg-primary"}`}
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
             />
           </div>
         </div>
 
-        {/* Status Badge */}
-        <div className="mt-3 flex justify-center">
-          {isActive ? (
-            <Badge
-              variant="secondary"
-              className={isUrgent ? "bg-destructive/20 text-destructive" : ""}
-            >
-              {isUrgent ? "Closing Soon!" : "Round Active"}
-            </Badge>
-          ) : (
-            <Badge variant="outline">Waiting for Next Round</Badge>
-          )}
-        </div>
+        {/* Status - Minimal */}
+        {!isActive && (
+          <div className="mt-3 text-center">
+            <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+              Waiting for Next Round
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

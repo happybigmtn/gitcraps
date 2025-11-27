@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { squareToDice, squareToSum } from "@/lib/dice";
 
 // Bot strategies
 export type BotStrategy = "lucky7" | "field" | "random" | "doubles" | "diversified";
@@ -85,20 +86,6 @@ interface SimulationState {
   setLoading: (loading: boolean) => void;
   setOnChainState: (expiresAt: number, currentSlot: number) => void;
   clearFlash: () => void;
-}
-
-// Convert square index to dice sum
-function squareToSum(square: number): number {
-  const die1 = Math.floor(square / 6) + 1;
-  const die2 = (square % 6) + 1;
-  return die1 + die2;
-}
-
-// Convert square index to dice values
-function squareToDice(square: number): [number, number] {
-  const die1 = Math.floor(square / 6) + 1;
-  const die2 = (square % 6) + 1;
-  return [die1, die2];
 }
 
 // Check if sum is 7
