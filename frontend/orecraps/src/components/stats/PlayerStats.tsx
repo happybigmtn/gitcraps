@@ -18,8 +18,8 @@ interface PlayerStatsProps {
     lifetimeRewardsCrap: bigint;
     dicePrediction: number;
   } | null;
-  onClaimSol?: () => void;
-  onClaimCrap?: () => void;
+  onClaimSol?: () => Promise<void>;
+  onClaimCrap?: () => Promise<void>;
 }
 
 export function PlayerStats({
@@ -50,26 +50,32 @@ export function PlayerStats({
   const lifetimeCrap = minerData?.lifetimeRewardsCrap || 0n;
 
   const handleClaimSol = async () => {
+    if (!onClaimSol) {
+      toast.error("Claim SOL not available");
+      return;
+    }
     try {
       toast.info("Claiming SOL...");
-      // TODO: Implement actual claim
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      onClaimSol?.();
+      await onClaimSol();
       toast.success("SOL claimed successfully!");
     } catch (error) {
-      toast.error("Failed to claim SOL");
+      const message = error instanceof Error ? error.message : "Failed to claim SOL";
+      toast.error(message);
     }
   };
 
   const handleClaimCrap = async () => {
+    if (!onClaimCrap) {
+      toast.error("Claim CRAP not available");
+      return;
+    }
     try {
       toast.info("Claiming CRAP...");
-      // TODO: Implement actual claim
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      onClaimCrap?.();
+      await onClaimCrap();
       toast.success("CRAP claimed successfully!");
     } catch (error) {
-      toast.error("Failed to claim CRAP");
+      const message = error instanceof Error ? error.message : "Failed to claim CRAP";
+      toast.error(message);
     }
   };
 

@@ -119,19 +119,31 @@ export const useGameStore = create<GameState>()(
   )
 );
 
-// Derived selectors
+// FIXED: Use Zustand's built-in memoization instead of manual module-level cache variables
+
+// Derived selector: count of selected squares
+// Zustand will memoize this using referential equality on selectedSquares
 export const useSelectedSquareCount = () =>
-  useGameStore((state) => state.selectedSquares.filter(Boolean).length);
+  useGameStore(
+    (state) => state.selectedSquares.filter(Boolean).length
+  );
 
+// Derived selector: total deploy amount
 export const useTotalDeployAmount = () =>
-  useGameStore((state) => {
-    const count = state.selectedSquares.filter(Boolean).length;
-    return count * state.deployAmount;
-  });
+  useGameStore(
+    (state) => {
+      const count = state.selectedSquares.filter(Boolean).length;
+      return count * state.deployAmount;
+    }
+  );
 
+// Derived selector: win rate percentage
 export const useWinRate = () =>
-  useGameStore((state) => {
-    const wins = state.roundHistory.filter((r) => r.userWon).length;
-    const total = state.roundHistory.length;
-    return total > 0 ? (wins / total) * 100 : 0;
-  });
+  useGameStore(
+    (state) => {
+      const { roundHistory } = state;
+      if (roundHistory.length === 0) return 0;
+      const wins = roundHistory.filter((r) => r.userWon).length;
+      return (wins / roundHistory.length) * 100;
+    }
+  );

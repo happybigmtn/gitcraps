@@ -8,12 +8,16 @@ import { DiceAnimation } from "@/components/dice/DiceAnimation";
 import { DeployPanel } from "@/components/deploy/DeployPanel";
 import { RoundTimer } from "@/components/stats/RoundTimer";
 import { BotLeaderboard } from "@/components/simulation/BotLeaderboard";
+import { LiveAnalytics } from "@/components/analytics/LiveAnalytics";
+import { NetworkToggle } from "@/components/network/NetworkToggle";
+import { CrapsBettingPanel, CrapsGameStatus } from "@/components/craps";
 import { useBoard } from "@/hooks/useBoard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGameStore } from "@/store/gameStore";
-import { Dices, Grid3X3, Rocket, Loader2, Bot } from "lucide-react";
+import { Dices, Grid3X3, Rocket, Loader2, Bot, BarChart3, Target } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   const [showDiceDemo, setShowDiceDemo] = useState(false);
@@ -44,7 +48,7 @@ export default function Home() {
   }, [round]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -53,8 +57,14 @@ export default function Home() {
             <span className="text-xl font-bold">OreCraps</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Demo Roll Button */}
+          <div className="flex items-center gap-2">
+            <NetworkToggle />
+            <Link href="/analytics">
+              <Button variant="outline" size="sm">
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline ml-2">Analytics</span>
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={handleDemoRoll}>
               <Dices className="mr-2 h-4 w-4" />
               Demo Roll
@@ -65,20 +75,23 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 flex-1">
         {/* Round Timer */}
         <div className="mb-6">
           {boardLoading ? (
-            <Card className="p-4">
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Card className="overflow-hidden">
+              <div className="p-4 flex items-center justify-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading round data...
+                <span className="text-sm">Loading round data...</span>
               </div>
             </Card>
           ) : boardError ? (
-            <Card className="p-4">
-              <div className="text-center text-destructive text-sm">
-                {boardError}
+            <Card className="overflow-hidden">
+              <div className="p-4 flex items-center justify-center gap-3">
+                <div className="p-2 rounded-lg bg-muted">
+                  <Dices className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <span className="text-sm text-muted-foreground">{boardError}</span>
               </div>
             </Card>
           ) : board && round ? (
@@ -143,24 +156,31 @@ export default function Home() {
         {/* Desktop Layout - Single screen */}
         <div className="hidden lg:grid lg:grid-cols-12 gap-4">
           {/* Left Column - Mining Board */}
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-7 min-w-0">
             <MiningBoard squares={boardSquares} isRoundActive={!!board} />
           </div>
 
-          {/* Right Column - Deploy & Leaderboard */}
-          <div className="lg:col-span-5 space-y-4">
+          {/* Right Column - Craps, Deploy, Leaderboard & Analytics */}
+          <div className="lg:col-span-5 space-y-4 min-w-0">
+            <CrapsGameStatus />
+            <CrapsBettingPanel />
             <DeployPanel />
             <BotLeaderboard />
+            <LiveAnalytics />
           </div>
         </div>
 
         {/* Mobile Layout with Tabs */}
         <div className="lg:hidden">
           <Tabs defaultValue="board" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="board">
                 <Grid3X3 className="h-4 w-4 mr-1" />
                 Board
+              </TabsTrigger>
+              <TabsTrigger value="craps">
+                <Target className="h-4 w-4 mr-1" />
+                Craps
               </TabsTrigger>
               <TabsTrigger value="deploy">
                 <Rocket className="h-4 w-4 mr-1" />
@@ -170,10 +190,19 @@ export default function Home() {
                 <Bot className="h-4 w-4 mr-1" />
                 Bots
               </TabsTrigger>
+              <TabsTrigger value="stats">
+                <BarChart3 className="h-4 w-4 mr-1" />
+                Stats
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="board" className="mt-4">
               <MiningBoard squares={boardSquares} isRoundActive={!!board} />
+            </TabsContent>
+
+            <TabsContent value="craps" className="mt-4 space-y-4">
+              <CrapsGameStatus />
+              <CrapsBettingPanel />
             </TabsContent>
 
             <TabsContent value="deploy" className="mt-4 space-y-4">
@@ -183,12 +212,16 @@ export default function Home() {
             <TabsContent value="bots" className="mt-4">
               <BotLeaderboard />
             </TabsContent>
+
+            <TabsContent value="stats" className="mt-4">
+              <LiveAnalytics />
+            </TabsContent>
           </Tabs>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-6 py-3">
+      <footer className="border-t py-3 flex-shrink-0">
         <div className="container mx-auto px-4 text-center text-xs text-muted-foreground">
           OreCraps - Stake RNG, Earn CRAP on Solana | All combinations have equal expected value
         </div>

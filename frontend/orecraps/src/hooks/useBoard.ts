@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { boardPDA, roundPDA, ORE_PROGRAM_ID } from "@/lib/solana";
 import { BOARD_SIZE } from "@/lib/program";
+import { withFallback, getConnection, getCurrentEndpoint } from "@/lib/rpcManager";
+import { useNetworkStore } from "@/store/networkStore";
+import { createDebugger } from "@/lib/debug";
+
+const debug = createDebugger("useBoard");
 
 export interface BoardState {
   roundId: bigint;
@@ -25,10 +29,14 @@ export interface RoundState {
   totalWinnings: bigint;
 }
 
-// Rate limiting constants - VERY conservative to avoid 429s
-const MIN_POLL_INTERVAL = 10000; // Minimum 10 seconds between polls
-const NORMAL_POLL_INTERVAL = 15000; // Normal polling at 15 seconds
-const FAST_POLL_INTERVAL = 10000; // Fast polling when close to round end
+// Rate limiting constants - VERY conservative for devnet to avoid 429s
+const DEVNET_MIN_POLL_INTERVAL = 10000; // Minimum 10 seconds between polls on devnet
+const DEVNET_NORMAL_POLL_INTERVAL = 15000; // Normal polling at 15 seconds on devnet
+const DEVNET_FAST_POLL_INTERVAL = 10000; // Fast polling when close to round end on devnet
+// Localnet can poll much faster since there's no rate limiting
+const LOCALNET_MIN_POLL_INTERVAL = 500; // 500ms minimum for localnet
+const LOCALNET_NORMAL_POLL_INTERVAL = 1000; // 1 second normal for localnet
+const LOCALNET_FAST_POLL_INTERVAL = 300; // 300ms when close to round end on localnet
 const BACKOFF_MULTIPLIER = 2; // Double backoff on rate limit
 const MAX_BACKOFF = 60000; // Max 60 second backoff
 const INITIAL_BACKOFF = 10000; // Start with 10 second backoff on error
@@ -105,17 +113,29 @@ function readPubkey(data: Uint8Array, offset: number): string {
 }
 
 export function useBoard() {
-  const { connection } = useConnection();
+  // Use managed connection with automatic fallback instead of wallet adapter
   const [board, setBoard] = useState<BoardState | null>(null);
   const [round, setRound] = useState<RoundState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Get network from store to determine polling intervals
+  const { network } = useNetworkStore();
+  const isLocalnet = network === "localnet";
+
+  // Network-aware polling constants
+  const MIN_POLL_INTERVAL = isLocalnet ? LOCALNET_MIN_POLL_INTERVAL : DEVNET_MIN_POLL_INTERVAL;
+  const NORMAL_POLL_INTERVAL = isLocalnet ? LOCALNET_NORMAL_POLL_INTERVAL : DEVNET_NORMAL_POLL_INTERVAL;
+  const FAST_POLL_INTERVAL = isLocalnet ? LOCALNET_FAST_POLL_INTERVAL : DEVNET_FAST_POLL_INTERVAL;
 
   // Rate limiting state
   const lastFetchRef = useRef<number>(0);
   const backoffRef = useRef<number>(MIN_POLL_INTERVAL);
   const fetchingRef = useRef<boolean>(false);
   const lastRoundIdRef = useRef<bigint | null>(null);
+  const initialFetchDoneRef = useRef<boolean>(false);
+  // FIXED: AbortController for cancelling in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchBoard = useCallback(async (force = false) => {
     // Prevent concurrent fetches
@@ -130,22 +150,34 @@ export function useBoard() {
       return;
     }
 
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     fetchingRef.current = true;
     lastFetchRef.current = now;
 
     try {
-      setLoading(true);
+      // Only show loading on initial fetch, not on subsequent polls
+      // This prevents the loading spinner from flashing on every poll
+      if (!initialFetchDoneRef.current) {
+        setLoading(true);
+      }
       setError(null);
 
       // Get board address first
       const [boardAddress] = boardPDA();
 
-      // Single batched request: get board info + current slot
-      // This reduces 3 RPC calls to 2 (or 1 if round hasn't changed)
-      const [boardAccount, currentSlot] = await Promise.all([
-        connection.getAccountInfo(boardAddress),
-        connection.getSlot(),
-      ]);
+      // Use withFallback for automatic RPC failover
+      const { boardAccount, currentSlot } = await withFallback(async (conn) => {
+        const [boardAcc, slot] = await Promise.all([
+          conn.getAccountInfo(boardAddress),
+          conn.getSlot(),
+        ]);
+        return { boardAccount: boardAcc, currentSlot: slot };
+      });
 
       if (!boardAccount) {
         setError("Board account not found. Program may not be initialized.");
@@ -169,7 +201,11 @@ export function useBoard() {
 
       if (needsRoundFetch) {
         const [roundAddress] = roundPDA(roundId);
-        const roundAccount = await connection.getAccountInfo(roundAddress);
+
+        // Use withFallback for round fetch too
+        const roundAccount = await withFallback(async (conn) => {
+          return conn.getAccountInfo(roundAddress);
+        });
 
         if (roundAccount) {
           const roundData = new Uint8Array(roundAccount.data);
@@ -229,6 +265,11 @@ export function useBoard() {
       backoffRef.current = MIN_POLL_INTERVAL;
 
     } catch (err) {
+      // FIXED: Ignore aborted requests silently
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+
       console.error("Error fetching board:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch board";
 
@@ -236,7 +277,7 @@ export function useBoard() {
       if (errorMessage.includes("429") || errorMessage.includes("rate limit") || errorMessage.includes("failed")) {
         const newBackoff = Math.max(INITIAL_BACKOFF, backoffRef.current * BACKOFF_MULTIPLIER);
         backoffRef.current = Math.min(newBackoff, MAX_BACKOFF);
-        console.warn(`Rate limited - backing off to ${backoffRef.current}ms`);
+        console.warn(`Rate limited - backing off to ${backoffRef.current}ms. Current RPC: ${getCurrentEndpoint()}`);
         // Don't show rate limit errors to user, just back off silently
       } else {
         setError(errorMessage);
@@ -244,8 +285,10 @@ export function useBoard() {
     } finally {
       setLoading(false);
       fetchingRef.current = false;
+      initialFetchDoneRef.current = true;
     }
-  }, [connection, round]);
+  // FIXED: Properly include dependencies to avoid stale closures
+  }, [MIN_POLL_INTERVAL, round]);
 
   // Calculate time remaining until round expires
   const getTimeRemaining = useCallback(() => {
@@ -255,13 +298,27 @@ export function useBoard() {
   }, [round, board]);
 
   // Initial fetch and adaptive polling
+  // IMPORTANT: Include `network` in dependencies to restart polling when network changes
   useEffect(() => {
+    debug(`Starting polling for network: ${network}`);
+
+    // FIXED: Track mounted state to prevent updates after unmount
+    let isMounted = true;
+
+    // Reset backoff and refs when network changes
+    backoffRef.current = MIN_POLL_INTERVAL;
+    lastRoundIdRef.current = null;
+    initialFetchDoneRef.current = false;
+
     fetchBoard(true); // Force initial fetch
 
     // Use dynamic interval based on time remaining
     let timeoutId: NodeJS.Timeout;
 
     const schedulePoll = () => {
+      // FIXED: Don't schedule if unmounted
+      if (!isMounted) return;
+
       // Determine next poll interval based on time remaining
       const timeRemaining = getTimeRemaining();
       let pollInterval = NORMAL_POLL_INTERVAL;
@@ -275,15 +332,26 @@ export function useBoard() {
       pollInterval = Math.max(pollInterval, backoffRef.current);
 
       timeoutId = setTimeout(() => {
-        fetchBoard();
-        schedulePoll();
+        if (isMounted) {
+          fetchBoard();
+          schedulePoll();
+        }
       }, pollInterval);
     };
 
     schedulePoll();
 
-    return () => clearTimeout(timeoutId);
-  }, [fetchBoard, getTimeRemaining]);
+    return () => {
+      debug(`Stopping polling for network: ${network}`);
+      isMounted = false;
+      clearTimeout(timeoutId);
+      // FIXED: Cancel any in-flight requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  // FIXED: Include all necessary dependencies
+  }, [network, fetchBoard, getTimeRemaining, NORMAL_POLL_INTERVAL, FAST_POLL_INTERVAL, MIN_POLL_INTERVAL]);
 
   return {
     board,
