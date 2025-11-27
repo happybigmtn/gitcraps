@@ -12,6 +12,13 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
     let args = Deploy::try_from_bytes(data)?;
     let mut amount = u64::from_le_bytes(args.amount);
     let mask = u64::from_le_bytes(args.squares);
+    let dice_prediction = args.dice_prediction;
+
+    // Validate dice prediction (0 = safe mode, 2-12 = valid prediction).
+    if dice_prediction != 0 && (dice_prediction < 2 || dice_prediction > 12) {
+        sol_log("Invalid dice prediction. Must be 0 (safe) or 2-12.");
+        return Err(ProgramError::InvalidArgument);
+    }
 
     // TODO(#049): Need config account - tracked in todos/049
 
@@ -125,6 +132,8 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         miner.checkpoint_id = 0;
         miner.lifetime_rewards_sol = 0;
         miner.lifetime_rewards_ore = 0;
+        miner.dice_prediction = dice_prediction;
+        miner._padding = [0; 7];
         miner
     } else {
         miner_info
@@ -150,6 +159,11 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         miner.deployed = [0; BOARD_SIZE];
         miner.cumulative = round.deployed;
         miner.round_id = round.id;
+        miner.dice_prediction = dice_prediction;
+    } else {
+        // Update dice prediction if miner is already in this round
+        // (allows changing prediction before round ends)
+        miner.dice_prediction = dice_prediction;
     }
 
     // Calculate all deployments.

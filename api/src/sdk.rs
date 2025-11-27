@@ -115,12 +115,31 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
 
 // let [signer_info, authority_info, automation_info, board_info, miner_info, round_info, system_program] =
 
+/// Deploys SOL to squares for mining with a dice prediction.
+///
+/// # Arguments
+/// * `signer` - The signer of the transaction
+/// * `authority` - The authority of the miner account
+/// * `amount` - Amount of SOL to deploy per square (in lamports)
+/// * `round_id` - The current round ID
+/// * `squares` - Array of 25 booleans indicating which squares to deploy to
+/// * `dice_prediction` - Dice sum prediction (0=safe mode, 2-12=bet on that sum)
+///
+/// # Dice Prediction
+/// - 0: Safe mode - guaranteed but reduced reward (~1/6 of base)
+/// - 2 or 12: 36x payout (1/36 probability)
+/// - 3 or 11: 18x payout (2/36 probability)
+/// - 4 or 10: 12x payout (3/36 probability)
+/// - 5 or 9: 9x payout (4/36 probability)
+/// - 6 or 8: 7.2x payout (5/36 probability)
+/// - 7: 6x payout (6/36 probability)
 pub fn deploy(
     signer: Pubkey,
     authority: Pubkey,
     amount: u64,
     round_id: u64,
     squares: [bool; BOARD_SIZE],
+    dice_prediction: u8,
 ) -> Instruction {
     let automation_address = automation_pda(authority).0;
     let board_address = board_pda().0;
@@ -154,6 +173,8 @@ pub fn deploy(
         data: Deploy {
             amount: amount.to_le_bytes(),
             squares: mask.to_le_bytes(),
+            dice_prediction,
+            _padding: [0; 7],
         }
         .to_bytes(),
     }

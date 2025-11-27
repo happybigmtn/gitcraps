@@ -83,36 +83,62 @@ pub fn process_checkpoint(accounts: &[AccountInfo<'_>], _data: &[u8]) -> Program
                 / round.deployed[winning_square] as u128) as u64;
             sol_log(&format!("Base rewards: {} SOL", lamports_to_sol(rewards_sol)).as_str());
 
-            // Calculate ORE rewards.
-            if round.top_miner == SPLIT_ADDRESS {
-                // If round is split, split the reward evenly among all miners.
-                rewards_ore = ((round.top_miner_reward as u128
+            // Calculate ORE rewards using dice betting mechanic.
+            // The base reward is distributed based on dice prediction accuracy.
+            let base_ore_reward = round.top_miner_reward;
+            let dice_prediction = miner.dice_prediction;
+            let dice_sum = round.dice_sum;
+
+            // Log dice info
+            sol_log(
+                &format!(
+                    "Dice: prediction={}, roll={} ({}+{})",
+                    dice_prediction, dice_sum, round.dice_results[0], round.dice_results[1]
+                )
+                .as_str(),
+            );
+
+            // Calculate dice-based rewards
+            let dice_ore_reward = Round::calculate_dice_payout(
+                dice_prediction,
+                dice_sum,
+                base_ore_reward,
+            );
+
+            if dice_ore_reward > 0 {
+                // Winner gets probability-weighted reward proportional to their deployment
+                rewards_ore = ((dice_ore_reward as u128
                     * miner.deployed[winning_square] as u128)
                     / round.deployed[winning_square] as u128) as u64;
-                sol_log(
-                    &format!(
-                        "Split rewards: {} ORE",
-                        amount_to_ui_amount(rewards_ore, TOKEN_DECIMALS)
-                    )
-                    .as_str(),
-                );
-            } else {
-                // If round is not split, payout to the top miner.
-                let top_miner_sample = round.top_miner_sample(r, winning_square);
-                if top_miner_sample >= miner.cumulative[winning_square]
-                    && top_miner_sample
-                        < miner.cumulative[winning_square] + miner.deployed[winning_square]
-                {
-                    rewards_ore = round.top_miner_reward;
-                    round.top_miner = miner.authority;
+
+                if dice_prediction == 0 {
                     sol_log(
                         &format!(
-                            "Top miner rewards: {} ORE",
+                            "Safe mode rewards: {} ORE",
                             amount_to_ui_amount(rewards_ore, TOKEN_DECIMALS)
                         )
                         .as_str(),
                     );
+                } else {
+                    sol_log(
+                        &format!(
+                            "Dice WIN! (predicted {}, rolled {}) rewards: {} ORE ({}x multiplier)",
+                            dice_prediction,
+                            dice_sum,
+                            amount_to_ui_amount(rewards_ore, TOKEN_DECIMALS),
+                            Round::dice_multiplier(dice_prediction) as f64 / 100.0
+                        )
+                        .as_str(),
+                    );
                 }
+            } else {
+                sol_log(
+                    &format!(
+                        "Dice MISS: predicted {}, rolled {}. No ORE rewards.",
+                        dice_prediction, dice_sum
+                    )
+                    .as_str(),
+                );
             }
 
             // Calculate motherlode rewards.

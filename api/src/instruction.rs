@@ -67,6 +67,10 @@ pub struct Deploy {
     /// 64-bit bitmask for 36 dice combinations (6x6 grid).
     /// Bits 0-35 represent squares, bits 36-63 are unused.
     pub squares: [u8; 8],
+    /// Dice prediction for betting (2-12, or 0 for safe mode).
+    pub dice_prediction: u8,
+    /// Padding for alignment.
+    pub _padding: [u8; 7],
 }
 
 #[repr(C)]
