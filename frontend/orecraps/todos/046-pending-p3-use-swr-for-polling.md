@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p3
 issue_id: "046"
 tags: [performance, frontend, refactoring]
 dependencies: ["037"]
+resolved_date: 2025-11-27
 ---
 
 # Replace Manual Polling with SWR Library

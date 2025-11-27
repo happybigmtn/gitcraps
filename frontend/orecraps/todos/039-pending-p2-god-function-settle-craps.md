@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p2
 issue_id: "039"
 tags: [architecture, solana-program, refactoring]
 dependencies: ["034"]
+resolved_date: 2025-11-27
 ---
 
 # God Function: settle_craps (472 Lines)

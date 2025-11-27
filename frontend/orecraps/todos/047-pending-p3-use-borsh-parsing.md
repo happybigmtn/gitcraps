@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p3
 issue_id: "047"
 tags: [code-quality, frontend, refactoring]
 dependencies: []
+resolved_date: 2025-11-27
 ---
 
 # Replace Manual Buffer Parsing with Borsh Serialization

@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p3
 issue_id: "049"
 tags: [code-quality, rust, documentation]
 dependencies: []
+resolved_date: 2025-11-27
 ---
 
 # Address Active TODO Comments in Codebase

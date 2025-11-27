@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p2
 issue_id: "038"
 tags: [architecture, frontend, refactoring]
 dependencies: []
+resolved_date: 2025-11-27
 ---
 
 # God Component: BotLeaderboard (713 Lines)

@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p2
 issue_id: "037"
 tags: [performance, frontend, rpc, network]
 dependencies: []
+resolved_date: 2025-11-27
 ---
 
 # Missing RPC Request Batching Causes Rate Limiting

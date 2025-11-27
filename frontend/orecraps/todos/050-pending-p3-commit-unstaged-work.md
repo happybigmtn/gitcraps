@@ -1,9 +1,10 @@
 ---
-status: pending
+status: completed
 priority: p3
 issue_id: "050"
 tags: [git, development-practice]
 dependencies: []
+resolved_date: 2025-11-27
 ---
 
 # Commit Unstaged Work - 17 Modified + 30 Untracked Files
