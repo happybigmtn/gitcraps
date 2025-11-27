@@ -1,5 +1,40 @@
 // Dice probability and payout calculations
 
+// Core dice constants
+export const DICE_FACES = 6;
+export const BOARD_SIZE = DICE_FACES * DICE_FACES;
+export const MIN_SUM = 2;
+export const MAX_SUM = 12;
+
+/**
+ * Converts a board square (0-35) to dice values [die1, die2]
+ */
+export function squareToDice(square: number): [number, number] {
+  return [Math.floor(square / DICE_FACES) + 1, (square % DICE_FACES) + 1];
+}
+
+/**
+ * Converts a board square (0-35) to dice sum (2-12)
+ */
+export function squareToSum(square: number): number {
+  const [d1, d2] = squareToDice(square);
+  return d1 + d2;
+}
+
+/**
+ * Converts dice values [die1, die2] to a board square (0-35)
+ */
+export function diceToSquare(die1: number, die2: number): number {
+  return (die1 - 1) * DICE_FACES + (die2 - 1);
+}
+
+/**
+ * Checks if dice roll is a "hard" way (doubles like 2-2, 3-3, etc)
+ */
+export function isHardway(die1: number, die2: number): boolean {
+  return die1 === die2;
+}
+
 export interface DiceMultiplier {
   sum: number;
   probability: number;
@@ -94,7 +129,7 @@ export function getRiskBgColor(riskLevel: DiceMultiplier["riskLevel"]): string {
 
 // Dice face patterns (positions of dots on 3x3 grid)
 // Grid positions: 0-8 (top-left to bottom-right)
-export const DICE_FACES: Record<number, number[]> = {
+export const DICE_FACE_PATTERNS: Record<number, number[]> = {
   1: [4], // center
   2: [0, 8], // top-left, bottom-right
   3: [0, 4, 8], // diagonal
