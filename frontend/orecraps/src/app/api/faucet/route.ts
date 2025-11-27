@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { spawnSync } from "child_process";
 import { PublicKey } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
+import { createDebugger } from "@/lib/debug";
 
-// Development-only debug logging (stripped in production)
-const debug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[Faucet]", ...args);
-  }
-};
+const debug = createDebugger("Faucet");
 
 const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
 const LOCALNET_RPC = "http://127.0.0.1:8899";

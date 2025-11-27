@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server";
-import { exec, spawn } from "child_process";
-import { promisify } from "util";
+import { spawnSync } from "child_process";
 import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
+import { createDebugger } from "@/lib/debug";
 
-// Development-only debug logging (stripped in production)
-const debug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[Localnet]", ...args);
-  }
-};
-
-const execAsync = promisify(exec);
+const debug = createDebugger("Localnet");
 
 const SCRIPT_PATH = path.resolve(process.cwd(), "../../scripts/localnet-setup.sh");
 const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
@@ -19,8 +12,16 @@ const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/i
 // Check if localnet validator is running
 async function isValidatorRunning(): Promise<boolean> {
   try {
-    const { stdout } = await execAsync("pgrep -f solana-test-validator", { timeout: 5000 });
-    return stdout.trim().length > 0;
+    const result = spawnSync("pgrep", ["-f", "solana-test-validator"], {
+      timeout: 5000,
+      encoding: "utf-8",
+    });
+
+    if (result.error) {
+      return false;
+    }
+
+    return result.stdout.trim().length > 0;
   } catch {
     return false;
   }
@@ -107,13 +108,25 @@ export async function POST(request: Request) {
         }
 
         // Start the validator using the script
-        const { stdout, stderr } = await execAsync(
-          `KEYPAIR="${KEYPAIR_PATH}" "${SCRIPT_PATH}" start`,
-          { timeout: 60000 }
-        );
+        const result = spawnSync(SCRIPT_PATH, ["start"], {
+          timeout: 60000,
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            KEYPAIR: KEYPAIR_PATH,
+          },
+        });
 
+        if (result.error) {
+          throw result.error;
+        }
+        if (result.status !== 0) {
+          throw new Error(`Process failed: ${result.stderr}`);
+        }
+
+        const stdout = result.stdout;
         debug("Localnet start stdout:", stdout);
-        if (stderr) debug("Localnet start stderr:", stderr);
+        if (result.stderr) debug("Localnet start stderr:", result.stderr);
 
         // Wait a moment for validator to stabilize
         await new Promise((r) => setTimeout(r, 2000));
@@ -128,27 +141,46 @@ export async function POST(request: Request) {
       }
 
       case "stop": {
-        const { stdout, stderr } = await execAsync(
-          `"${SCRIPT_PATH}" stop`,
-          { timeout: 10000 }
-        );
+        const result = spawnSync(SCRIPT_PATH, ["stop"], {
+          timeout: 10000,
+          encoding: "utf-8",
+        });
+
+        if (result.error) {
+          throw result.error;
+        }
+        if (result.status !== 0) {
+          throw new Error(`Process failed: ${result.stderr}`);
+        }
 
         return NextResponse.json({
           success: true,
           message: "Validator stopped",
-          output: stdout,
+          output: result.stdout,
         });
       }
 
       case "setup": {
         // Full setup - build, start, fund, initialize
-        const { stdout, stderr } = await execAsync(
-          `KEYPAIR="${KEYPAIR_PATH}" "${SCRIPT_PATH}" setup`,
-          { timeout: 180000 } // 3 minutes for full setup
-        );
+        const result = spawnSync(SCRIPT_PATH, ["setup"], {
+          timeout: 180000, // 3 minutes for full setup
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            KEYPAIR: KEYPAIR_PATH,
+          },
+        });
 
+        if (result.error) {
+          throw result.error;
+        }
+        if (result.status !== 0) {
+          throw new Error(`Process failed: ${result.stderr}`);
+        }
+
+        const stdout = result.stdout;
         debug("Localnet setup stdout:", stdout);
-        if (stderr) debug("Localnet setup stderr:", stderr);
+        if (result.stderr) debug("Localnet setup stderr:", result.stderr);
 
         const health = await checkHealth();
 

@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { spawnSync } from "child_process";
 import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
+import { createDebugger } from "@/lib/debug";
 
-// Development-only debug logging (stripped in production)
-const debug = (...args: unknown[]) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[StartRound]", ...args);
-  }
-};
+const debug = createDebugger("StartRound");
 
 // CLI path relative to the project root (workspace target directory)
 const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
