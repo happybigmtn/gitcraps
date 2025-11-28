@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * MSCHF-INSPIRED DESIGN SYSTEM
+ * "Ceci n'est pas un casino" - Magritte meets Mischief
+ * Bold, irreverent, snappy, accessible
+ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -42,98 +48,104 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Solana & Gaming Colors */
-  --color-solana-purple: var(--solana-purple);
-  --color-solana-green: var(--solana-green);
+  /* MSCHF Color System */
+  --color-gold: var(--gold);
+  --color-cyan: var(--cyan);
+  --color-hot: var(--hot);
   --color-win: var(--win);
   --color-loss: var(--loss);
   --color-safe: var(--safe);
   --color-risky: var(--risky);
 }
 
+/* MSCHF-inspired dark-first design - bold, high contrast */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.98 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.55 0.25 285);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.55 0.25 285);
-  --chart-1: oklch(0.55 0.25 285);
-  --chart-2: oklch(0.75 0.2 155);
-  --chart-3: oklch(0.65 0.2 45);
-  --chart-4: oklch(0.6 0.2 200);
-  --chart-5: oklch(0.7 0.2 320);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.55 0.25 285);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.55 0.25 285);
+  --radius: 0.25rem; /* Sharper corners - more technical */
 
-  /* Solana & Gaming */
-  --solana-purple: oklch(0.55 0.25 285);
-  --solana-green: oklch(0.75 0.2 155);
-  --win: oklch(0.65 0.2 155);
+  /* Base - Deep black with warm undertones */
+  --background: oklch(0.08 0.01 60);
+  --foreground: oklch(0.95 0 0);
+
+  /* Cards - Slightly elevated surfaces */
+  --card: oklch(0.12 0.01 60);
+  --card-foreground: oklch(0.95 0 0);
+
+  /* Popovers */
+  --popover: oklch(0.1 0.01 60);
+  --popover-foreground: oklch(0.95 0 0);
+
+  /* Primary - MSCHF Gold/Yellow */
+  --primary: oklch(0.85 0.18 85);
+  --primary-foreground: oklch(0.1 0 0);
+
+  /* Secondary - Muted technical gray */
+  --secondary: oklch(0.18 0.01 60);
+  --secondary-foreground: oklch(0.75 0 0);
+
+  /* Muted - Subdued elements */
+  --muted: oklch(0.15 0.01 60);
+  --muted-foreground: oklch(0.55 0 0);
+
+  /* Accent - MSCHF Cyan */
+  --accent: oklch(0.7 0.15 220);
+  --accent-foreground: oklch(0.1 0 0);
+
+  /* Destructive - MSCHF Red */
+  --destructive: oklch(0.6 0.25 25);
+
+  /* Borders - Subtle but present */
+  --border: oklch(0.25 0.01 60);
+  --input: oklch(0.18 0.01 60);
+  --ring: oklch(0.85 0.18 85);
+
+  /* Chart colors - Bold and distinct */
+  --chart-1: oklch(0.85 0.18 85);  /* Gold */
+  --chart-2: oklch(0.7 0.15 155);  /* Green */
+  --chart-3: oklch(0.7 0.15 220);  /* Cyan */
+  --chart-4: oklch(0.65 0.2 25);   /* Red */
+  --chart-5: oklch(0.7 0.15 320);  /* Purple */
+
+  /* Sidebar */
+  --sidebar: oklch(0.06 0.01 60);
+  --sidebar-foreground: oklch(0.95 0 0);
+  --sidebar-primary: oklch(0.85 0.18 85);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.15 0.01 60);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.2 0.01 60);
+  --sidebar-ring: oklch(0.85 0.18 85);
+
+  /* MSCHF Signature Colors */
+  --gold: oklch(0.85 0.18 85);
+  --cyan: oklch(0.7 0.15 220);
+  --hot: oklch(0.65 0.25 25);
+
+  /* Gaming States */
+  --win: oklch(0.75 0.2 145);
   --loss: oklch(0.6 0.25 25);
-  --safe: oklch(0.55 0.2 260);
-  --risky: oklch(0.7 0.2 55);
+  --safe: oklch(0.7 0.15 220);
+  --risky: oklch(0.85 0.18 85);
 }
 
-.dark {
-  --background: oklch(0.1 0.01 285);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.15 0.015 285);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.15 0.015 285);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.65 0.25 285);
-  --primary-foreground: oklch(0.1 0 0);
-  --secondary: oklch(0.2 0.02 285);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.2 0.02 285);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.25 0.03 285);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.65 0.25 25);
-  --border: oklch(0.25 0.02 285);
-  --input: oklch(0.2 0.02 285);
-  --ring: oklch(0.65 0.25 285);
-  --chart-1: oklch(0.65 0.25 285);
-  --chart-2: oklch(0.75 0.2 155);
-  --chart-3: oklch(0.7 0.2 55);
-  --chart-4: oklch(0.6 0.2 200);
-  --chart-5: oklch(0.65 0.25 320);
-  --sidebar: oklch(0.12 0.015 285);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.65 0.25 285);
-  --sidebar-primary-foreground: oklch(0.1 0 0);
-  --sidebar-accent: oklch(0.2 0.02 285);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.25 0.02 285);
-  --sidebar-ring: oklch(0.65 0.25 285);
-
-  /* Solana & Gaming - Dark mode */
-  --solana-purple: oklch(0.65 0.25 285);
-  --solana-green: oklch(0.75 0.2 155);
-  --win: oklch(0.7 0.2 155);
-  --loss: oklch(0.65 0.25 25);
-  --safe: oklch(0.6 0.2 260);
-  --risky: oklch(0.75 0.2 55);
+/* Light mode - Inverted but still bold */
+.light {
+  --background: oklch(0.98 0 0);
+  --foreground: oklch(0.1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0 0);
+  --primary: oklch(0.5 0.2 85);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.3 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.5 0.15 220);
+  --accent-foreground: oklch(0.98 0 0);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.95 0 0);
+  --ring: oklch(0.5 0.2 85);
 }
 
 @layer base {
@@ -143,42 +155,324 @@
   body {
     @apply bg-background text-foreground;
     min-height: 100vh;
-    min-height: 100dvh; /* Use dynamic viewport height for mobile */
+    min-height: 100dvh;
+    font-feature-settings: "ss01", "ss02", "cv01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* MSCHF-style monospace emphasis */
+  .font-technical {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    letter-spacing: -0.02em;
+  }
+
+  /* Selection styling - bold yellow */
+  ::selection {
+    background: oklch(0.85 0.18 85 / 0.3);
+    color: oklch(0.95 0 0);
   }
 }
 
-/* Dice face styling */
+/* ============================================
+   MSCHF-INSPIRED TYPOGRAPHY
+   ============================================ */
+
+/* Bold statement text */
+.text-statement {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+/* Ironic/self-referential text style */
+.text-ironic {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Technical monospace for data */
+.text-data {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================
+   SNAPPY MICRO-INTERACTIONS
+   ============================================ */
+
+/* Universal snappy transition */
+.snappy {
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1),
+              box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.3);
+}
+
+/* Press/tap effect */
+.press-down:active {
+  transform: scale(0.97);
+}
+
+/* Border pulse on focus */
+.focus-pulse:focus {
+  animation: border-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes border-pulse {
+  0%, 100% { border-color: oklch(0.85 0.18 85 / 0.5); }
+  50% { border-color: oklch(0.85 0.18 85); }
+}
+
+/* ============================================
+   MSCHF-STYLE BORDERS
+   ============================================ */
+
+/* Left accent border (MSCHF signature) */
+.border-accent-left {
+  border-left: 3px solid var(--primary);
+}
+
+.border-accent-left-cyan {
+  border-left: 3px solid var(--cyan);
+}
+
+.border-accent-left-hot {
+  border-left: 3px solid var(--hot);
+}
+
+/* ============================================
+   DICE & GAME ELEMENTS
+   ============================================ */
+
 .dice-face {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 2px;
   aspect-ratio: 1;
+  background: oklch(0.95 0 0);
+  border-radius: 4px;
+  padding: 3px;
+  box-shadow:
+    0 2px 4px oklch(0 0 0 / 0.2),
+    inset 0 1px 0 oklch(1 0 0 / 0.5);
 }
 
 .dice-dot {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: currentColor;
+  background: oklch(0.1 0 0);
+  box-shadow: inset 0 1px 2px oklch(0 0 0 / 0.3);
 }
 
-/* Mining grid pulse animation */
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 5px var(--solana-purple); }
-  50% { box-shadow: 0 0 20px var(--solana-purple), 0 0 30px var(--solana-green); }
+/* Gold pulse animation */
+@keyframes pulse-gold {
+  0%, 100% {
+    box-shadow: 0 0 0 0 oklch(0.85 0.18 85 / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px oklch(0.85 0.18 85 / 0.6);
+  }
 }
 
-.pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+.pulse-gold {
+  animation: pulse-gold 2s ease-in-out infinite;
 }
 
-/* Confetti animation */
+/* Winning state glow */
+@keyframes win-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 oklch(0.75 0.2 145 / 0.5);
+    border-color: oklch(0.75 0.2 145);
+  }
+  50% {
+    box-shadow: 0 0 30px 8px oklch(0.75 0.2 145 / 0.8);
+    border-color: oklch(0.85 0.2 145);
+  }
+}
+
+.win-glow {
+  animation: win-glow 1s ease-in-out infinite;
+}
+
+/* ============================================
+   MAGRITTE-INSPIRED DISCLAIMER
+   ============================================ */
+
+.disclaimer-surreal {
+  position: relative;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: oklch(0.5 0 0);
+  text-align: center;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid oklch(0.2 0 0);
+}
+
+.disclaimer-surreal::before {
+  content: "[ ";
+}
+
+.disclaimer-surreal::after {
+  content: " ]";
+}
+
+/* ============================================
+   GRID SQUARE STYLES
+   ============================================ */
+
+.grid-square {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--secondary);
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  cursor: pointer;
+}
+
+.grid-square:hover {
+  border-color: var(--primary);
+  background: oklch(0.2 0.01 60);
+}
+
+.grid-square.selected {
+  border-color: var(--primary);
+  border-width: 2px;
+  background: oklch(0.85 0.18 85 / 0.15);
+}
+
+.grid-square.winner {
+  animation: win-glow 1s ease-in-out infinite;
+  background: oklch(0.75 0.2 145 / 0.2);
+}
+
+/* ============================================
+   CONFETTI & CELEBRATION
+   ============================================ */
+
 @keyframes confetti-fall {
-  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  0% {
+    transform: translateY(-100vh) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg) scale(0.5);
+    opacity: 0;
+  }
 }
 
 .confetti {
   animation: confetti-fall 3s ease-out forwards;
+}
+
+/* ============================================
+   BUTTON VARIANTS
+   ============================================ */
+
+/* MSCHF-style inverted button */
+.btn-mschf {
+  position: relative;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  overflow: hidden;
+}
+
+.btn-mschf:hover {
+  background: var(--foreground);
+  color: var(--background);
+  transform: translateY(-1px);
+}
+
+.btn-mschf:active {
+  transform: scale(0.98) translateY(0);
+}
+
+/* Ghost variant with border */
+.btn-ghost-bordered {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.btn-ghost-bordered:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading-pulse {
+  animation: pulse-subtle 1.5s ease-in-out infinite;
+}
+
+/* Skeleton loading with shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    oklch(0.15 0 0) 0%,
+    oklch(0.2 0 0) 50%,
+    oklch(0.15 0 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0 0);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0 0);
 }

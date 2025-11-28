@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatTimeRemaining, slotsToSeconds } from "@/lib/solana";
-import { Clock } from "lucide-react";
+import { Clock, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface RoundTimerProps {
   roundId?: number;
@@ -23,7 +24,6 @@ export function RoundTimer({
   const lastSlotUpdateRef = useRef<number>(Date.now());
   const baseTimeRef = useRef<number>(0);
 
-  // Sync with on-chain state when currentSlot changes
   useEffect(() => {
     if (endSlot && currentSlot) {
       const slotsRemaining = Math.max(0, endSlot - currentSlot);
@@ -34,71 +34,117 @@ export function RoundTimer({
     }
   }, [endSlot, currentSlot]);
 
-  // Smooth countdown between slot updates - interval created only once on mount
   useEffect(() => {
     const interval = setInterval(() => {
       if (baseTimeRef.current <= 0) return;
-
       const elapsedSinceUpdate = (Date.now() - lastSlotUpdateRef.current) / 1000;
       const estimatedRemaining = Math.max(0, baseTimeRef.current - elapsedSinceUpdate);
       setTimeRemaining(estimatedRemaining);
     }, 100);
-
     return () => clearInterval(interval);
-  }, []); // Empty deps - created once
+  }, []);
 
   const isActive = timeRemaining > 0;
   const isUrgent = timeRemaining > 0 && timeRemaining <= 10;
+  const isCritical = timeRemaining > 0 && timeRemaining <= 5;
 
-  // Progress percentage
   const totalSlots = endSlot - startSlot;
   const elapsedSlots = currentSlot - startSlot;
   const progress = totalSlots > 0 ? Math.min(100, (elapsedSlots / totalSlots) * 100) : 0;
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          {/* Round Info */}
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isActive ? "bg-primary/10" : "bg-muted"}`}>
-              <div className={`w-2 h-2 rounded-full ${isActive ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`} />
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Round</div>
-              <div className="font-mono font-bold text-lg">#{roundId}</div>
-            </div>
+    <Card className={cn(
+      "overflow-hidden border-border/50",
+      isCritical && "border-[oklch(0.65_0.25_25)]"
+    )}>
+      <CardContent className="p-0">
+        {/* MSCHF-style compact header */}
+        <div className="flex items-stretch">
+          {/* Round ID - Left accent panel */}
+          <div className={cn(
+            "flex flex-col items-center justify-center px-4 py-3 border-r border-border/30",
+            isActive ? "bg-primary/10 border-l-3 border-l-primary" : "bg-secondary/30"
+          )}>
+            <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+              EPOCH
+            </span>
+            <span className="font-mono font-bold text-xl text-foreground">
+              {roundId.toString().padStart(3, '0')}
+            </span>
           </div>
 
-          {/* Timer */}
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground flex items-center gap-1 justify-end">
-              <Clock className="h-3 w-3" />
-              Time Remaining
-            </div>
-            <div className={`font-mono text-3xl font-bold tabular-nums ${isUrgent ? "text-orange-500" : ""}`}>
-              {formatTimeRemaining(timeRemaining)}
-            </div>
+          {/* Timer - Central display */}
+          <div className="flex-1 flex items-center justify-center py-3 px-4">
+            {isActive ? (
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={isCritical ? { scale: [1, 1.1, 1] } : {}}
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                >
+                  <Clock className={cn(
+                    "h-4 w-4",
+                    isCritical ? "text-[oklch(0.65_0.25_25)]" : "text-muted-foreground"
+                  )} />
+                </motion.div>
+                <div className={cn(
+                  "font-mono text-3xl font-bold tabular-nums tracking-tight",
+                  isCritical ? "text-[oklch(0.65_0.25_25)]" : isUrgent ? "text-primary" : "text-foreground"
+                )}>
+                  {formatTimeRemaining(timeRemaining)}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-muted-foreground/50" />
+                <span className="font-mono text-sm text-muted-foreground">
+                  AWAITING NEXT EPOCH
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Status indicator - Right panel */}
+          <div className={cn(
+            "flex flex-col items-center justify-center px-4 py-3 border-l border-border/30",
+            isActive ? "bg-[oklch(0.75_0.2_145/0.1)]" : "bg-secondary/30"
+          )}>
+            <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+              STATUS
+            </span>
+            <span className={cn(
+              "font-mono font-bold text-xs",
+              isActive ? "text-[oklch(0.75_0.2_145)]" : "text-muted-foreground"
+            )}>
+              {isActive ? "LIVE" : "IDLE"}
+            </span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
-            <motion.div
-              className={`h-full rounded-full ${isUrgent ? "bg-orange-500" : "bg-primary"}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-            />
-          </div>
+        {/* Progress bar - MSCHF style thin line */}
+        <div className="h-1 bg-secondary/50">
+          <motion.div
+            className={cn(
+              "h-full",
+              isCritical
+                ? "bg-[oklch(0.65_0.25_25)]"
+                : isUrgent
+                ? "bg-primary"
+                : "bg-[oklch(0.75_0.2_145)]"
+            )}
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          />
         </div>
 
-        {/* Status - Minimal */}
-        {!isActive && (
-          <div className="mt-3 text-center">
-            <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
-              Waiting for Next Round
+        {/* Footer stats - Technical info */}
+        {isActive && (
+          <div className="px-4 py-1.5 bg-secondary/20 flex items-center justify-between text-[9px] font-mono text-muted-foreground">
+            <span>
+              SLOT {currentSlot.toLocaleString()} / {endSlot.toLocaleString()}
+            </span>
+            <span>
+              {progress.toFixed(1)}% ELAPSED
             </span>
           </div>
         )}

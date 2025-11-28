@@ -17,7 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Grid3X3, Dices } from "lucide-react";
+import { Grid3X3, Dices, X } from "lucide-react";
 
 interface SquareData {
   index: number;
@@ -31,7 +31,6 @@ interface MiningBoardProps {
   isRoundActive?: boolean;
 }
 
-// Helper for shallow array comparison
 function arraysEqual<T>(a: T[], b: T[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -40,7 +39,7 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
   return true;
 }
 
-// Mini dice face component
+// MSCHF-style mini dice - sharp, technical
 function MiniDice({ value, size = 16 }: { value: number; size?: number }) {
   const dots: Record<number, number[]> = {
     1: [4],
@@ -53,7 +52,7 @@ function MiniDice({ value, size = 16 }: { value: number; size?: number }) {
 
   return (
     <div
-      className="grid grid-cols-3 gap-[1px] bg-white dark:bg-gray-200 rounded-[2px] p-[2px]"
+      className="grid grid-cols-3 gap-[1px] bg-foreground rounded-[2px] p-[2px]"
       style={{ width: size, height: size }}
     >
       {Array.from({ length: 9 }, (_, i) => (
@@ -62,7 +61,7 @@ function MiniDice({ value, size = 16 }: { value: number; size?: number }) {
           className={cn(
             "rounded-full",
             dots[value]?.includes(i)
-              ? "bg-gray-900"
+              ? "bg-background"
               : "bg-transparent"
           )}
           style={{
@@ -127,18 +126,31 @@ export const MiningBoard = React.memo(function MiningBoard({
   const selectedCount = selectedSquares.filter(Boolean).length;
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-2">
+    <Card className="overflow-hidden border-border/50">
+      {/* MSCHF-style header with left accent */}
+      <CardHeader className="pb-2 border-l-3 border-l-primary">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Grid3X3 className="h-4 w-4" />
-            Dice Selection
-          </CardTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="font-medium">{selectedCount}/36</span>
+          <div className="flex items-center gap-3">
+            <CardTitle className="font-mono text-sm uppercase tracking-wide flex items-center gap-2">
+              <Grid3X3 className="h-4 w-4 text-primary" />
+              OUTCOME MATRIX
+            </CardTitle>
+            <span className="text-[10px] font-mono text-muted-foreground">
+              6x6 = 36
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs text-primary">
+              {selectedCount}<span className="text-muted-foreground">/36</span>
+            </span>
             {selectedCount > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearSquares}>
-                Clear
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive snappy"
+                onClick={clearSquares}
+              >
+                <X className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
@@ -146,52 +158,66 @@ export const MiningBoard = React.memo(function MiningBoard({
       </CardHeader>
 
       <CardContent className="space-y-4 pt-0">
-        {/* Quick Select - Compact row */}
-        <div className="flex flex-wrap gap-1.5">
+        {/* MSCHF-style Quick Select - Technical chips */}
+        <div className="flex flex-wrap gap-1">
           {DICE_MULTIPLIERS.filter((m) => m.sum >= 2).map((mult) => {
             const count = getSelectedCountForSum(mult.sum);
             const isFullySelected = count === mult.ways;
+            const isPartiallySelected = count > 0 && !isFullySelected;
 
             return (
-              <button
+              <motion.button
                 key={mult.sum}
                 onClick={() => selectBySum(mult.sum)}
+                whileTap={{ scale: 0.95 }}
                 className={cn(
-                  "relative px-2 py-1 rounded-md text-xs font-medium transition-all",
-                  "border border-border/50 hover:border-primary/50",
-                  isFullySelected && "bg-primary/10 border-primary/30 text-primary"
+                  "relative px-2 py-1 rounded font-mono text-[11px] snappy",
+                  "border border-border/50",
+                  isFullySelected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : isPartiallySelected
+                    ? "bg-primary/20 border-primary/50 text-primary"
+                    : "bg-secondary/50 hover:bg-secondary hover:border-primary/30"
                 )}
               >
                 <span className="font-bold">{mult.sum}</span>
-                <span className={cn("ml-1 opacity-60", getSumColor(mult.sum))}>
+                <span className="ml-1 opacity-70 text-[10px]">
                   {mult.multiplier}x
                 </span>
-              </button>
+              </motion.button>
             );
           })}
         </div>
 
-        {/* 6x6 Grid - Responsive sizing */}
+        {/* 6x6 Grid - MSCHF Technical Grid */}
         <div className="overflow-x-auto -mx-3 px-3">
           <div className="min-w-[320px] max-w-[380px] mx-auto">
-            {/* Column headers */}
+            {/* Column headers - Technical labels */}
             <div className="grid grid-cols-7 gap-1 mb-1">
-              <div className="aspect-square max-w-[44px]" />
+              <div className="aspect-square max-w-[44px] flex items-center justify-center">
+                <span className="font-mono text-[9px] text-muted-foreground/50">D2</span>
+              </div>
               {[1, 2, 3, 4, 5, 6].map((d2) => (
                 <div
                   key={d2}
                   className="aspect-square max-w-[44px] flex items-center justify-center"
                 >
-                  <MiniDice value={d2} size={16} />
+                  <MiniDice value={d2} size={14} />
                 </div>
               ))}
             </div>
 
             {/* Grid rows */}
-            {[1, 2, 3, 4, 5, 6].map((die1) => (
+            {[1, 2, 3, 4, 5, 6].map((die1, rowIdx) => (
               <div key={die1} className="grid grid-cols-7 gap-1 mb-1">
-                <div className="aspect-square max-w-[44px] flex items-center justify-center">
-                  <MiniDice value={die1} size={16} />
+                {/* Row label */}
+                <div className="aspect-square max-w-[44px] flex items-center justify-center relative">
+                  {rowIdx === 0 && (
+                    <span className="absolute -left-3 font-mono text-[9px] text-muted-foreground/50 rotate-[-90deg]">
+                      D1
+                    </span>
+                  )}
+                  <MiniDice value={die1} size={14} />
                 </div>
 
                 {[1, 2, 3, 4, 5, 6].map((die2) => {
@@ -208,35 +234,35 @@ export const MiningBoard = React.memo(function MiningBoard({
                       onClick={() => isRoundActive && toggleSquare(index)}
                       disabled={!isRoundActive}
                       className={cn(
-                        "relative aspect-square max-w-[44px] rounded-lg transition-all",
+                        "relative aspect-square max-w-[44px] rounded snappy",
                         "flex flex-col items-center justify-center",
                         "font-mono text-xs",
-                        "border border-border/30",
+                        "border",
                         isSelected
-                          ? cn("border-2", getSumBgColor(combo.sum))
-                          : "bg-secondary/30 hover:bg-secondary/50",
-                        isWinner && "ring-2 ring-primary",
-                        isFlashing && "animate-pulse ring-4 ring-yellow-400/60 bg-yellow-400/20",
+                          ? "border-primary bg-primary/15 border-2"
+                          : "border-border/40 bg-secondary/30 hover:bg-secondary/60 hover:border-primary/40",
+                        isWinner && "ring-2 ring-[oklch(0.75_0.2_145)]",
+                        isFlashing && "animate-pulse ring-4 ring-primary/60 bg-primary/25",
                         !isRoundActive && "opacity-40 cursor-not-allowed"
                       )}
                       whileTap={isRoundActive ? { scale: 0.92 } : {}}
                     >
                       <span className={cn(
-                        "font-bold text-sm",
+                        "font-bold text-sm tabular-nums",
                         isSelected ? "text-foreground" : "text-muted-foreground"
                       )}>
                         {combo.label}
                       </span>
                       <span className={cn(
-                        "text-[10px] opacity-70",
-                        isSelected && getSumColor(combo.sum)
+                        "text-[9px] tabular-nums",
+                        isSelected ? "text-primary" : "text-muted-foreground/60"
                       )}>
                         ={combo.sum}
                       </span>
 
                       {/* Deployed overlay */}
                       {Number(square.deployed) > 0 && (
-                        <div className="absolute bottom-0.5 text-[8px] text-primary font-bold">
+                        <div className="absolute bottom-0.5 text-[8px] text-[oklch(0.7_0.15_220)] font-bold">
                           {formatSol(square.deployed)}
                         </div>
                       )}
@@ -261,12 +287,20 @@ export const MiningBoard = React.memo(function MiningBoard({
           </div>
         </div>
 
-        {/* Legend - Minimal */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground justify-center pt-1 border-t border-border/30">
-          <span className="text-green-500">7 (6x)</span>
-          <span className="text-yellow-500">6,8 (7.2x)</span>
-          <span className="text-orange-500">4,5,9,10 (9-12x)</span>
-          <span className="text-red-400">2,3,11,12 (18-36x)</span>
+        {/* MSCHF-style Legend - Technical */}
+        <div className="pt-3 border-t border-border/30">
+          <div className="flex items-center justify-between text-[9px] font-mono">
+            <span className="text-muted-foreground/50">PAYOUT CURVE:</span>
+            <div className="flex gap-3">
+              <span className="text-[oklch(0.75_0.2_145)]">7=6x</span>
+              <span className="text-primary">6,8=7.2x</span>
+              <span className="text-[oklch(0.7_0.15_55)]">5,9=9x</span>
+              <span className="text-[oklch(0.65_0.2_25)]">2-4,10-12=12-36x</span>
+            </div>
+          </div>
+          <p className="text-[8px] text-muted-foreground/40 font-mono mt-1 text-center">
+            expected value = 1.0 regardless of selection (provably fair)
+          </p>
         </div>
       </CardContent>
     </Card>

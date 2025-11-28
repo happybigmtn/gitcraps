@@ -10,9 +10,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Wallet, LogOut, Copy, ExternalLink } from "lucide-react";
+import { Wallet, LogOut, Copy, ExternalLink, Zap } from "lucide-react";
 import { truncateAddress } from "@/lib/solana";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export function WalletButton() {
   const { publicKey, disconnect, connected, connecting } = useWallet();
@@ -47,10 +48,17 @@ export function WalletButton() {
       <Button
         onClick={handleConnect}
         disabled={connecting}
-        className="bg-primary hover:bg-primary/90"
+        size="sm"
+        className={cn(
+          "h-8 px-3 font-mono text-xs",
+          "bg-primary text-primary-foreground",
+          "hover:bg-foreground hover:text-background"
+        )}
       >
-        <Wallet className="mr-2 h-4 w-4" />
-        {connecting ? "Connecting..." : "Connect Wallet"}
+        <Zap className="h-3.5 w-3.5" />
+        <span className="ml-1.5">
+          {connecting ? "CONNECTING" : "CONNECT"}
+        </span>
       </Button>
     );
   }
@@ -58,24 +66,28 @@ export function WalletButton() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="font-mono">
-          <Wallet className="mr-2 h-4 w-4" />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 px-3 font-mono text-xs border-[oklch(0.75_0.2_145)] text-[oklch(0.75_0.2_145)] hover:bg-[oklch(0.75_0.2_145/0.1)]"
+        >
+          <div className="w-2 h-2 rounded-full bg-[oklch(0.75_0.2_145)] mr-2 animate-pulse" />
           {publicKey && truncateAddress(publicKey.toBase58())}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={handleCopyAddress}>
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Address
+      <DropdownMenuContent align="end" className="w-48 font-mono text-xs">
+        <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
+          <Copy className="mr-2 h-3.5 w-3.5" />
+          COPY ADDRESS
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleViewExplorer}>
-          <ExternalLink className="mr-2 h-4 w-4" />
-          View on Explorer
+        <DropdownMenuItem onClick={handleViewExplorer} className="cursor-pointer">
+          <ExternalLink className="mr-2 h-3.5 w-3.5" />
+          VIEW ON EXPLORER
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleDisconnect} className="text-destructive">
-          <LogOut className="mr-2 h-4 w-4" />
-          Disconnect
+        <DropdownMenuItem onClick={handleDisconnect} className="text-destructive cursor-pointer">
+          <LogOut className="mr-2 h-3.5 w-3.5" />
+          DISCONNECT
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
