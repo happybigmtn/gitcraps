@@ -1,24 +1,13 @@
 import { NextResponse } from "next/server";
-import {
-  Connection,
-  Keypair,
-  Transaction,
-  PublicKey,
-  SystemProgram,
-  TransactionInstruction,
-  LAMPORTS_PER_SOL,
-  sendAndConfirmTransaction,
-} from "@solana/web3.js";
+import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { apiLimiter } from "@/lib/rateLimit";
-import { ORE_PROGRAM_ID } from "@/lib/constants";
-import fs from "fs";
+import { CrapsGameService } from "@/services";
 
 const debug = createDebugger("PlaceBet");
 
 const LOCALNET_RPC = "http://127.0.0.1:8899";
-const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
 
 function loadTestKeypair(): Keypair {
   if (process.env.NODE_ENV === 'production') {
@@ -30,30 +19,6 @@ function loadTestKeypair(): Keypair {
   }
   const seed = Buffer.from(seedString, 'base64');
   return Keypair.fromSeed(seed);
-}
-
-// Helper to convert bigint to little-endian bytes
-function toLeBytes(value: bigint, length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = Number((value >> BigInt(8 * i)) & 0xffn);
-  }
-  return bytes;
-}
-
-// PDAs
-function crapsGamePDA(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_game")],
-    ORE_PROGRAM_ID
-  );
-}
-
-function crapsPositionPDA(authority: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_position"), authority.toBuffer()],
-    ORE_PROGRAM_ID
-  );
 }
 
 /**
@@ -93,95 +58,60 @@ export async function POST(request: Request) {
       );
     }
 
-    const rpcEndpoint = LOCALNET_RPC;
-    const connection = new Connection(rpcEndpoint, "confirmed");
+    const connection = new Connection(LOCALNET_RPC, "confirmed");
+    const gameService = new CrapsGameService(connection);
 
     // Use test keypair for localnet
     const payer = loadTestKeypair();
 
-    debug(`Placing ${bets.length} bet(s) on ${network}`);
+    debug(`Placing ${bets.length} bet(s)`);
     debug(`Payer: ${payer.publicKey.toBase58()}`);
 
-    // Check balance
-    const balance = await connection.getBalance(payer.publicKey);
-    debug(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+    // Calculate total required amount
+    const totalAmount = bets.reduce((sum, bet) => sum + bet.amount, 0);
 
-    if (balance < LAMPORTS_PER_SOL * 0.1) {
+    // Validate balance using service
+    const balanceCheck = await gameService.validateBalance(payer.publicKey, totalAmount + 0.1);
+    if (!balanceCheck.valid) {
       return NextResponse.json(
         {
           success: false,
-          error: `Insufficient balance. Test wallet has ${balance / LAMPORTS_PER_SOL} SOL. Run: solana airdrop 5 ${payer.publicKey.toBase58()} --url localhost`,
+          error: `${balanceCheck.error} Run: solana airdrop 5 ${payer.publicKey.toBase58()} --url localhost`,
         },
         { status: 400 }
       );
     }
 
-    // Build transaction
-    const transaction = new Transaction();
-    const [crapsGameAddress] = crapsGamePDA();
-    const [crapsPositionAddress] = crapsPositionPDA(payer.publicKey);
+    debug(`Balance: ${balanceCheck.balance} SOL`);
 
-    for (const bet of bets) {
-      const { betType, point, amount } = bet;
-      const amountLamports = BigInt(Math.floor(amount * LAMPORTS_PER_SOL));
-
-      // Build instruction data: [discriminator(1), betType(1), point(1), padding(6), amount(8)]
-      const data = new Uint8Array(17);
-      data[0] = 23; // PlaceCrapsBet discriminator
-      data[1] = betType;
-      data[2] = point || 0;
-      data.set(toLeBytes(amountLamports, 8), 9);
-
-      const ix = new TransactionInstruction({
-        programId: ORE_PROGRAM_ID,
-        keys: [
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: crapsGameAddress, isSigner: false, isWritable: true },
-          { pubkey: crapsPositionAddress, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        data: Buffer.from(data),
-      });
-
-      transaction.add(ix);
-      debug(`Added bet: type=${betType}, point=${point}, amount=${amount} SOL`);
-    }
-
-    // Send and confirm transaction
-    debug("Sending transaction...");
-    const signature = await sendAndConfirmTransaction(
-      connection,
-      transaction,
-      [payer],
-      { commitment: "confirmed" }
-    );
-
-    // Verify transaction actually succeeded
-    const txResult = await connection.getTransaction(signature, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0
+    // Log bets being placed
+    bets.forEach(bet => {
+      debug(`Bet: type=${bet.betType}, point=${bet.point || 0}, amount=${bet.amount} SOL`);
     });
 
-    if (txResult?.meta?.err) {
+    // Place bets using service
+    const result = await gameService.placeBets(payer, bets);
+
+    if (!result.success) {
       const isDevelopment = process.env.NODE_ENV === 'development';
-      console.error('Transaction failed:', txResult.meta.err); // Always log internally
+      console.error('Transaction failed:', result.error);
 
       return NextResponse.json(
         {
           success: false,
-          error: isDevelopment ? `Transaction failed: ${JSON.stringify(txResult.meta.err)}` : 'Transaction failed',
+          error: isDevelopment ? `Transaction failed: ${result.error}` : 'Transaction failed',
         },
         { status: 500 }
       );
     }
 
-    debug(`Transaction confirmed: ${signature}`);
+    debug(`Transaction confirmed: ${result.signature}`);
 
     return NextResponse.json({
       success: true,
-      signature,
+      signature: result.signature,
       payer: payer.publicKey.toBase58(),
-      betsPlaced: bets.length,
+      betsPlaced: result.betsPlaced,
     });
   } catch (error) {
     debug("Error:", error);

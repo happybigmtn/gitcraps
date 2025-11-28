@@ -16,7 +16,7 @@ pub fn process_set_admin_fee(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progr
         .as_account_mut::<Config>(&ore_api::ID)?
         .assert_mut_err(
             |c| c.admin == *signer_info.key,
-            OreError::NotAuthorized.into(),
+            OreError::InvalidAuthority.into(),
         )?;
     system_program.is_program(&system_program::ID)?;
 

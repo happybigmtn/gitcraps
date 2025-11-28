@@ -5,6 +5,9 @@ pub mod instruction;
 pub mod sdk;
 pub mod state;
 
+#[cfg(feature = "ts-bindings")]
+pub mod bindings;
+
 pub mod prelude {
     pub use crate::consts::*;
     pub use crate::error::*;

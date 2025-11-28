@@ -290,9 +290,9 @@ mod tests {
         // Test that dice rolls are in valid range (1-6 for each die, 2-12 for sum)
         let round = Round {
             id: 0,
-            deployed: [0; 25],
+            deployed: [0; 36],
             slot_hash: [0; 32],
-            count: [0; 25],
+            count: [0; 36],
             expires_at: 0,
             motherlode: 0,
             rent_payer: Pubkey::default(),

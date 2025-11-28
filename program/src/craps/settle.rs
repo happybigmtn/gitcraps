@@ -3,10 +3,23 @@ use ore_api::state::{index_to_point, NUM_POINTS, NUM_HARDWAYS};
 use solana_program::log::sol_log;
 use steel::*;
 
-use crate::craps_utils::{
+use super::utils::{
     square_to_dice_sum, is_hardway, is_craps, is_natural, is_point_number,
     is_field_winner, hardway_loses, calculate_payout,
 };
+
+/// Helper to calculate and release reserved payout for a settled bet.
+/// Uses saturating_sub to safely handle edge cases.
+fn release_reserved_payout(craps_game: &mut CrapsGame, bet_amount: u64, payout_num: u64, payout_den: u64) {
+    // Calculate the max payout that was reserved (bet + winnings)
+    let payout = bet_amount
+        .saturating_mul(payout_num)
+        .saturating_div(payout_den.max(1)); // Avoid division by zero
+    let max_payout = bet_amount.saturating_add(payout);
+
+    // Release the reserved amount
+    craps_game.reserved_payouts = craps_game.reserved_payouts.saturating_sub(max_payout);
+}
 
 /// Settles craps bets for a user after a round is complete.
 /// This should be called after reset() determines the winning square.
@@ -195,6 +208,8 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
             #[cfg(feature = "debug")]
             sol_log(&format!("Field bet lost: {}", craps_position.field_bet).as_str());
         }
+        // Release reserved payout (worst case 2:1 for field)
+        release_reserved_payout(craps_game, craps_position.field_bet, FIELD_PAYOUT_2_12_NUM, FIELD_PAYOUT_2_12_DEN);
         craps_position.field_bet = 0;
     }
 
@@ -215,6 +230,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 .checked_add(craps_position.any_seven)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
         }
+        release_reserved_payout(craps_game, craps_position.any_seven, ANY_SEVEN_PAYOUT_NUM, ANY_SEVEN_PAYOUT_DEN);
         craps_position.any_seven = 0;
     }
 
@@ -235,6 +251,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 .checked_add(craps_position.any_craps)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
         }
+        release_reserved_payout(craps_game, craps_position.any_craps, ANY_CRAPS_PAYOUT_NUM, ANY_CRAPS_PAYOUT_DEN);
         craps_position.any_craps = 0;
     }
 
@@ -255,6 +272,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 .checked_add(craps_position.yo_eleven)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
         }
+        release_reserved_payout(craps_game, craps_position.yo_eleven, YO_ELEVEN_PAYOUT_NUM, YO_ELEVEN_PAYOUT_DEN);
         craps_position.yo_eleven = 0;
     }
 
@@ -275,6 +293,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 .checked_add(craps_position.aces)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
         }
+        release_reserved_payout(craps_game, craps_position.aces, ACES_PAYOUT_NUM, ACES_PAYOUT_DEN);
         craps_position.aces = 0;
     }
 
@@ -295,6 +314,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 .checked_add(craps_position.twelve)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
         }
+        release_reserved_payout(craps_game, craps_position.twelve, TWELVE_PAYOUT_NUM, TWELVE_PAYOUT_DEN);
         craps_position.twelve = 0;
     }
 
@@ -311,13 +331,14 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 _ => continue,
             };
 
+            let (num, den) = if hardway_num == 4 || hardway_num == 10 {
+                (HARD_4_10_PAYOUT_NUM, HARD_4_10_PAYOUT_DEN)
+            } else {
+                (HARD_6_8_PAYOUT_NUM, HARD_6_8_PAYOUT_DEN)
+            };
+
             if dice_sum == hardway_num && is_hard {
                 // Won! Hardway hit.
-                let (num, den) = if hardway_num == 4 || hardway_num == 10 {
-                    (HARD_4_10_PAYOUT_NUM, HARD_4_10_PAYOUT_DEN)
-                } else {
-                    (HARD_6_8_PAYOUT_NUM, HARD_6_8_PAYOUT_DEN)
-                };
                 let payout = calculate_payout(craps_position.hardways[i], num, den);
                 let win_amount = craps_position.hardways[i]
                     .checked_add(payout)
@@ -327,6 +348,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Hard {} won: {} + {}", hardway_num, craps_position.hardways[i], payout).as_str());
+                release_reserved_payout(craps_game, craps_position.hardways[i], num, den);
                 craps_position.hardways[i] = 0;
             } else if hardway_loses(winning_square, hardway_num) {
                 // Lost on 7 or easy way.
@@ -335,6 +357,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Hard {} lost", hardway_num).as_str());
+                release_reserved_payout(craps_game, craps_position.hardways[i], num, den);
                 craps_position.hardways[i] = 0;
             }
             // Otherwise bet stays active.
@@ -352,9 +375,10 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     None => continue,
                 };
 
+                let (num, den) = get_place_payout(point_num);
+
                 if dice_sum == point_num {
                     // Place bet won!
-                    let (num, den) = get_place_payout(point_num);
                     let payout = calculate_payout(craps_position.place_bets[i], num, den);
                     let win_amount = craps_position.place_bets[i]
                         .checked_add(payout)
@@ -364,6 +388,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Place {} won: {} + {}", point_num, craps_position.place_bets[i], payout).as_str());
+                    release_reserved_payout(craps_game, craps_position.place_bets[i], num, den);
                     craps_position.place_bets[i] = 0;
                 } else if dice_sum == 7 {
                     // Place bet lost on 7.
@@ -372,6 +397,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Place {} lost on 7", point_num).as_str());
+                    release_reserved_payout(craps_game, craps_position.place_bets[i], num, den);
                     craps_position.place_bets[i] = 0;
                 }
             }
@@ -398,6 +424,8 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 total_winnings = total_winnings
                     .checked_add(win_amount)
                     .ok_or(ProgramError::ArithmeticOverflow)?;
+                // Release come bet reservation (1:1 payout)
+                release_reserved_payout(craps_game, craps_position.come_bets[i], PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
 
                 // Also pay come odds if any.
                 if craps_position.come_odds[i] > 0 {
@@ -411,6 +439,8 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Come {} + odds won: {} + {}", point_num, craps_position.come_bets[i] + craps_position.come_odds[i], payout + odds_payout).as_str());
+                    // Release come odds reservation
+                    release_reserved_payout(craps_game, craps_position.come_odds[i], num, den);
                     craps_position.come_odds[i] = 0;
                 }
                 craps_position.come_bets[i] = 0;
@@ -424,6 +454,13 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Come {} lost on 7", point_num).as_str());
+                // Release come bet reservation
+                release_reserved_payout(craps_game, craps_position.come_bets[i], PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
+                // Release come odds reservation if any
+                if craps_position.come_odds[i] > 0 {
+                    let (num, den) = get_true_odds_payout(point_num);
+                    release_reserved_payout(craps_game, craps_position.come_odds[i], num, den);
+                }
                 craps_position.come_bets[i] = 0;
                 craps_position.come_odds[i] = 0;
             }
@@ -445,10 +482,13 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                 total_winnings = total_winnings
                     .checked_add(win_amount)
                     .ok_or(ProgramError::ArithmeticOverflow)?;
+                // Release don't come bet reservation
+                release_reserved_payout(craps_game, craps_position.dont_come_bets[i], PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
 
                 // Also pay don't come odds if any.
                 if craps_position.dont_come_odds[i] > 0 {
-                    let (num, den) = get_dont_true_odds_payout(point_num);
+                    // For reservation, use the same payout as regular odds (worst case)
+                    let (num, den) = get_true_odds_payout(point_num);
                     let odds_payout = calculate_payout(craps_position.dont_come_odds[i], num, den);
                     let odds_win_amount = craps_position.dont_come_odds[i]
                         .checked_add(odds_payout)
@@ -458,6 +498,8 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Don't Come {} + odds won: {}", point_num, payout + odds_payout).as_str());
+                    // Release don't come odds reservation
+                    release_reserved_payout(craps_game, craps_position.dont_come_odds[i], num, den);
                     craps_position.dont_come_odds[i] = 0;
                 }
                 craps_position.dont_come_bets[i] = 0;
@@ -471,6 +513,13 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Don't Come {} lost on point", point_num).as_str());
+                // Release don't come bet reservation
+                release_reserved_payout(craps_game, craps_position.dont_come_bets[i], PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
+                // Release don't come odds reservation if any
+                if craps_position.dont_come_odds[i] > 0 {
+                    let (num, den) = get_true_odds_payout(point_num);
+                    release_reserved_payout(craps_game, craps_position.dont_come_odds[i], num, den);
+                }
                 craps_position.dont_come_bets[i] = 0;
                 craps_position.dont_come_odds[i] = 0;
             }
@@ -502,6 +551,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Pass Line won on {}: {} + {}", dice_sum, craps_position.pass_line, payout).as_str());
+                release_reserved_payout(craps_game, craps_position.pass_line, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
                 craps_position.pass_line = 0;
             }
             // Don't Pass loses.
@@ -511,6 +561,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Don't Pass lost on {}", dice_sum).as_str());
+                release_reserved_payout(craps_game, craps_position.dont_pass, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
                 craps_position.dont_pass = 0;
             }
         } else if is_craps(dice_sum) {
@@ -521,6 +572,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Pass Line lost on craps {}", dice_sum).as_str());
+                release_reserved_payout(craps_game, craps_position.pass_line, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
                 craps_position.pass_line = 0;
             }
             // Don't Pass wins on 2 or 3, pushes on 12.
@@ -543,6 +595,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Don't Pass won on {}: {} + {}", dice_sum, craps_position.dont_pass, payout).as_str());
                 }
+                release_reserved_payout(craps_game, craps_position.dont_pass, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
                 craps_position.dont_pass = 0;
             }
         } else if is_point_number(dice_sum) {
@@ -572,6 +625,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Pass Line won on point {}: {} + {}", point, craps_position.pass_line, payout).as_str());
+                release_reserved_payout(craps_game, craps_position.pass_line, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
 
                 // Pay pass odds if any.
                 if craps_position.pass_odds > 0 {
@@ -585,6 +639,7 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Pass Odds won: {} + {}", craps_position.pass_odds, odds_payout).as_str());
+                    release_reserved_payout(craps_game, craps_position.pass_odds, num, den);
                     craps_position.pass_odds = 0;
                 }
                 craps_position.pass_line = 0;
@@ -600,6 +655,12 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Don't Pass lost on point {}", point).as_str());
+                release_reserved_payout(craps_game, craps_position.dont_pass, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
+                if craps_position.dont_pass_odds > 0 {
+                    // Use true odds payout for reservation (worst case)
+                    let (num, den) = get_true_odds_payout(point);
+                    release_reserved_payout(craps_game, craps_position.dont_pass_odds, num, den);
+                }
                 craps_position.dont_pass = 0;
                 craps_position.dont_pass_odds = 0;
             }
@@ -619,6 +680,11 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                     .ok_or(ProgramError::ArithmeticOverflow)?;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Pass Line lost on 7-out: {}", craps_position.pass_line + craps_position.pass_odds).as_str());
+                release_reserved_payout(craps_game, craps_position.pass_line, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
+                if craps_position.pass_odds > 0 {
+                    let (num, den) = get_true_odds_payout(point);
+                    release_reserved_payout(craps_game, craps_position.pass_odds, num, den);
+                }
                 craps_position.pass_line = 0;
                 craps_position.pass_odds = 0;
             }
@@ -645,8 +711,12 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
                         .ok_or(ProgramError::ArithmeticOverflow)?;
                     #[cfg(feature = "debug")]
                     sol_log(&format!("Don't Pass Odds won: {} + {}", craps_position.dont_pass_odds, odds_payout).as_str());
+                    // Use true odds for reservation (worst case)
+                    let (num_res, den_res) = get_true_odds_payout(point);
+                    release_reserved_payout(craps_game, craps_position.dont_pass_odds, num_res, den_res);
                     craps_position.dont_pass_odds = 0;
                 }
+                release_reserved_payout(craps_game, craps_position.dont_pass, PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN);
                 craps_position.dont_pass = 0;
                 #[cfg(feature = "debug")]
                 sol_log(&format!("Don't Pass won on 7-out: {}", payout).as_str());

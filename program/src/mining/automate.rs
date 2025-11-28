@@ -46,7 +46,7 @@ pub fn process_automate(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramRes
             .as_account_mut::<Miner>(&ore_api::ID)?
             .assert_mut_err(
                 |m| m.authority == *signer_info.key,
-                OreError::NotAuthorized.into(),
+                OreError::InvalidAuthority.into(),
             )?
     };
 
@@ -56,7 +56,7 @@ pub fn process_automate(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramRes
             .as_account_mut::<Automation>(&ore_api::ID)?
             .assert_mut_err(
                 |a| a.authority == *signer_info.key,
-                OreError::NotAuthorized.into(),
+                OreError::InvalidAuthority.into(),
             )?;
         automation_info.close(signer_info)?;
         return Ok(());
@@ -80,7 +80,7 @@ pub fn process_automate(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramRes
             .as_account_mut::<Automation>(&ore_api::ID)?
             .assert_mut_err(
                 |a| a.authority == *signer_info.key,
-                OreError::NotAuthorized.into(),
+                OreError::InvalidAuthority.into(),
             )?
     };
 

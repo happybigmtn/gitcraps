@@ -2,7 +2,106 @@ use ore_api::prelude::*;
 use solana_program::log::sol_log;
 use steel::*;
 
-use crate::craps_utils::point_to_index;
+use super::utils::point_to_index;
+
+/// Calculate the maximum potential payout for a bet type and amount.
+/// This helps ensure the house has sufficient bankroll to cover all possible outcomes.
+fn calculate_max_payout(bet_type: u8, point: u8, amount: u64) -> Result<u64, ProgramError> {
+    // Helper to calculate payout: amount * (numerator / denominator) + amount
+    let calc = |num: u64, den: u64| -> Result<u64, ProgramError> {
+        let payout = amount
+            .checked_mul(num)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(den)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        amount
+            .checked_add(payout)
+            .ok_or(ProgramError::ArithmeticOverflow)
+    };
+
+    match bet_type {
+        // Pass Line (1:1)
+        0 => calc(PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN),
+        // Don't Pass (1:1)
+        1 => calc(PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN),
+        // Pass Odds - depends on point (2:1, 3:2, or 6:5)
+        2 => {
+            let (num, den) = match point {
+                4 | 10 => (TRUE_ODDS_4_10_NUM, TRUE_ODDS_4_10_DEN),
+                5 | 9 => (TRUE_ODDS_5_9_NUM, TRUE_ODDS_5_9_DEN),
+                6 | 8 => (TRUE_ODDS_6_8_NUM, TRUE_ODDS_6_8_DEN),
+                _ => return Ok(amount), // Shouldn't happen, but safe fallback
+            };
+            calc(num, den)
+        }
+        // Don't Pass Odds - inverse, but for reservation use same as pass odds
+        3 => {
+            let (num, den) = match point {
+                4 | 10 => (TRUE_ODDS_4_10_NUM, TRUE_ODDS_4_10_DEN),
+                5 | 9 => (TRUE_ODDS_5_9_NUM, TRUE_ODDS_5_9_DEN),
+                6 | 8 => (TRUE_ODDS_6_8_NUM, TRUE_ODDS_6_8_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
+        // Come (1:1)
+        4 => calc(PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN),
+        // Don't Come (1:1)
+        5 => calc(PASS_LINE_PAYOUT_NUM, PASS_LINE_PAYOUT_DEN),
+        // Come Odds
+        6 => {
+            let (num, den) = match point {
+                4 | 10 => (TRUE_ODDS_4_10_NUM, TRUE_ODDS_4_10_DEN),
+                5 | 9 => (TRUE_ODDS_5_9_NUM, TRUE_ODDS_5_9_DEN),
+                6 | 8 => (TRUE_ODDS_6_8_NUM, TRUE_ODDS_6_8_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
+        // Don't Come Odds
+        7 => {
+            let (num, den) = match point {
+                4 | 10 => (TRUE_ODDS_4_10_NUM, TRUE_ODDS_4_10_DEN),
+                5 | 9 => (TRUE_ODDS_5_9_NUM, TRUE_ODDS_5_9_DEN),
+                6 | 8 => (TRUE_ODDS_6_8_NUM, TRUE_ODDS_6_8_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
+        // Place bet
+        8 => {
+            let (num, den) = match point {
+                4 | 10 => (PLACE_4_10_PAYOUT_NUM, PLACE_4_10_PAYOUT_DEN),
+                5 | 9 => (PLACE_5_9_PAYOUT_NUM, PLACE_5_9_PAYOUT_DEN),
+                6 | 8 => (PLACE_6_8_PAYOUT_NUM, PLACE_6_8_PAYOUT_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
+        // Hardway
+        9 => {
+            let (num, den) = match point {
+                4 | 10 => (HARD_4_10_PAYOUT_NUM, HARD_4_10_PAYOUT_DEN),
+                6 | 8 => (HARD_6_8_PAYOUT_NUM, HARD_6_8_PAYOUT_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
+        // Field - worst case is 2:1
+        10 => calc(FIELD_PAYOUT_2_12_NUM, FIELD_PAYOUT_2_12_DEN),
+        // Any Seven (4:1)
+        11 => calc(ANY_SEVEN_PAYOUT_NUM, ANY_SEVEN_PAYOUT_DEN),
+        // Any Craps (7:1)
+        12 => calc(ANY_CRAPS_PAYOUT_NUM, ANY_CRAPS_PAYOUT_DEN),
+        // Yo Eleven (15:1)
+        13 => calc(YO_ELEVEN_PAYOUT_NUM, YO_ELEVEN_PAYOUT_DEN),
+        // Aces (30:1)
+        14 => calc(ACES_PAYOUT_NUM, ACES_PAYOUT_DEN),
+        // Twelve (30:1)
+        15 => calc(TWELVE_PAYOUT_NUM, TWELVE_PAYOUT_DEN),
+        _ => Ok(amount), // Invalid bet type, will be caught later
+    }
+}
 
 /// Places a craps bet for the user.
 pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResult {
@@ -46,6 +145,7 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         craps_game.house_bankroll = 0;
         craps_game.total_payouts = 0;
         craps_game.total_collected = 0;
+        craps_game.reserved_payouts = 0;
         craps_game
     } else {
         craps_game_info.as_account_mut::<CrapsGame>(&ore_api::ID)?
@@ -89,14 +189,18 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Dynamic limit based on house bankroll capacity
-    // Max potential payout shouldn't exceed house bankroll
-    let max_payout_multiplier = 36u64; // Worst case for single number bets
-    if let Some(max_payout) = amount.checked_mul(max_payout_multiplier) {
-        if max_payout > craps_game.house_bankroll {
-            sol_log("Bet exceeds house bankroll capacity");
-            return Err(ProgramError::InsufficientFunds);
-        }
+    // Calculate max potential payout for this bet
+    let max_payout = calculate_max_payout(bet_type, point, amount)?;
+
+    // Calculate available bankroll (total minus already reserved for pending bets)
+    let available_bankroll = craps_game.house_bankroll
+        .checked_sub(craps_game.reserved_payouts)
+        .ok_or(ProgramError::InsufficientFunds)?;
+
+    // Check if this bet's max payout fits in available bankroll
+    if max_payout > available_bankroll {
+        sol_log("Bet exceeds available house bankroll (after reserved payouts)");
+        return Err(ProgramError::InsufficientFunds);
     }
 
     // Check if bet is valid based on game state.
@@ -303,15 +407,21 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         .checked_add(amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
+    // Reserve this payout in the house bankroll
+    craps_game.reserved_payouts = craps_game.reserved_payouts
+        .checked_add(max_payout)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     // Transfer SOL from signer to craps game (house bankroll).
     craps_game_info.collect(amount, &signer_info)?;
     craps_game.house_bankroll = craps_game.house_bankroll
         .checked_add(amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
-    sol_log(&format!("Total wagered: {}, House bankroll: {}",
+    sol_log(&format!("Total wagered: {}, House bankroll: {}, Reserved payouts: {}",
         craps_position.total_wagered,
-        craps_game.house_bankroll
+        craps_game.house_bankroll,
+        craps_game.reserved_payouts
     ).as_str());
 
     Ok(())

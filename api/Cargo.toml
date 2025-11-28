@@ -23,3 +23,8 @@ spl-token-2022.workspace = true
 spl-associated-token-account.workspace = true
 steel.workspace = true
 thiserror.workspace = true
+ts-rs = { version = "7", optional = true }
+
+[features]
+default = []
+ts-bindings = ["ts-rs"]

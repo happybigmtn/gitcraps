@@ -6,9 +6,23 @@ import { createDebugger } from "@/lib/debug";
 
 const debug = createDebugger("Faucet");
 
-const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
 const LOCALNET_RPC = "http://127.0.0.1:8899";
 const LOCALNET_RNG_MINT = "RaBMafFSe53m9VU7CFf7ZWv7cQwUYFwBt926YZKLAVC";
+
+/**
+ * Get admin keypair path from environment
+ * Throws error if not set to prevent insecure defaults
+ */
+function getKeypairPath(): string {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error(
+      "ADMIN_KEYPAIR_PATH environment variable is required. " +
+      "Set it to the path of your Solana keypair file for faucet operations."
+    );
+  }
+  return keypairPath;
+}
 
 // Amount to airdrop: 1000 RNG tokens (with 9 decimals)
 const AIRDROP_AMOUNT = "1000";
@@ -106,7 +120,8 @@ export async function POST(request: Request) {
     if (!ataAddress) {
       debug(`Creating ATA for: ${wallet}`);
       try {
-        const createAtaResult = runCommand('spl-token', ['create-account', LOCALNET_RNG_MINT, '--owner', wallet, '--fee-payer', KEYPAIR_PATH, '--url', LOCALNET_RPC]);
+        const keypairPath = getKeypairPath();
+        const createAtaResult = runCommand('spl-token', ['create-account', LOCALNET_RNG_MINT, '--owner', wallet, '--fee-payer', keypairPath, '--url', LOCALNET_RPC]);
         debug("ATA creation output:", createAtaResult.stdout);
         const ataMatch = createAtaResult.stdout.match(/Creating account ([A-HJ-NP-Za-km-z1-9]{32,44})/);
         if (ataMatch) {

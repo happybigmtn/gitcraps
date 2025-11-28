@@ -1,11 +1,11 @@
 use ore_api::prelude::*;
 use steel::*;
 
-/// Sets the fee collector.
-pub fn process_set_fee_collector(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResult {
+/// Sets the admin.
+pub fn process_set_admin(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResult {
     // Parse data.
-    let args = SetFeeCollector::try_from_bytes(data)?;
-    let new_fee_collector = Pubkey::new_from_array(args.fee_collector);
+    let args = SetAdmin::try_from_bytes(data)?;
+    let new_admin = Pubkey::new_from_array(args.admin);
 
     // Load accounts.
     let [signer_info, config_info, system_program] = accounts else {
@@ -16,12 +16,12 @@ pub fn process_set_fee_collector(accounts: &[AccountInfo<'_>], data: &[u8]) -> P
         .as_account_mut::<Config>(&ore_api::ID)?
         .assert_mut_err(
             |c| c.admin == *signer_info.key,
-            OreError::NotAuthorized.into(),
+            OreError::InvalidAuthority.into(),
         )?;
     system_program.is_program(&system_program::ID)?;
 
-    // Set fee collector.
-    config.fee_collector = new_fee_collector;
+    // Set admin.
+    config.admin = new_admin;
 
     Ok(())
 }

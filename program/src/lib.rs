@@ -1,58 +1,15 @@
-mod automate;
-mod bury;
-mod checkpoint;
-mod claim_craps_winnings;
-mod claim_ore;
-mod claim_sol;
-mod claim_yield;
-mod close;
-mod craps_utils;
-mod deploy;
-mod deposit;
-mod fund_craps_house;
-mod initialize;
-mod log;
-mod new_var;
-mod place_craps_bet;
-mod recycle_sol;
-mod reset;
-mod set_admin;
-mod set_admin_fee;
-mod set_fee_collector;
-mod set_swap_program;
-mod set_var_address;
-mod settle_craps;
-mod settle_single_roll;
-mod start_round;
-mod withdraw;
-mod wrap;
+// Domain modules
+pub mod craps;
+pub mod mining;
+pub mod staking;
+pub mod claiming;
+pub mod admin;
 
-use automate::*;
-use bury::*;
-use checkpoint::*;
-use claim_craps_winnings::*;
-use claim_ore::*;
-use claim_sol::*;
-use claim_yield::*;
-use close::*;
-use deploy::*;
-use deposit::*;
-use fund_craps_house::*;
-use initialize::*;
-use log::*;
-use new_var::*;
-use place_craps_bet::*;
-use recycle_sol::*;
-use reset::*;
-use set_admin::*;
-use set_admin_fee::*;
-use set_fee_collector::*;
-use set_swap_program::*;
-use set_var_address::*;
-use settle_craps::*;
-use start_round::*;
-use withdraw::*;
-use wrap::*;
+use craps::*;
+use mining::*;
+use staking::*;
+use claiming::*;
+use admin::*;
 
 use ore_api::instruction::*;
 use steel::*;
@@ -65,19 +22,21 @@ pub fn process_instruction(
     let (ix, data) = parse_instruction(&ore_api::ID, program_id, data)?;
 
     match ix {
-        // Miner
+        // Mining
         OreInstruction::Initialize => process_initialize(accounts, data)?,
         OreInstruction::Automate => process_automate(accounts, data)?,
         OreInstruction::Checkpoint => process_checkpoint(accounts, data)?,
-        OreInstruction::ClaimSOL => process_claim_sol(accounts, data)?,
-        OreInstruction::ClaimORE => process_claim_ore(accounts, data)?,
         OreInstruction::Deploy => process_deploy(accounts, data)?,
         OreInstruction::Log => process_log(accounts, data)?,
         OreInstruction::Close => process_close(accounts, data)?,
         OreInstruction::Reset => process_reset(accounts, data)?,
         OreInstruction::RecycleSOL => process_recycle_sol(accounts, data)?,
 
-        // Staker
+        // Claiming
+        OreInstruction::ClaimSOL => process_claim_sol(accounts, data)?,
+        OreInstruction::ClaimORE => process_claim_ore(accounts, data)?,
+
+        // Staking
         OreInstruction::Deposit => process_deposit(accounts, data)?,
         OreInstruction::Withdraw => process_withdraw(accounts, data)?,
         OreInstruction::ClaimYield => process_claim_yield(accounts, data)?,

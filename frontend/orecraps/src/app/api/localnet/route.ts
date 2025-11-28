@@ -7,7 +7,21 @@ import { createDebugger } from "@/lib/debug";
 const debug = createDebugger("Localnet");
 
 const SCRIPT_PATH = path.resolve(process.cwd(), "../../scripts/localnet-setup.sh");
-const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
+
+/**
+ * Get admin keypair path from environment
+ * Throws error if not set to prevent insecure defaults
+ */
+function getKeypairPath(): string {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error(
+      "ADMIN_KEYPAIR_PATH environment variable is required. " +
+      "Set it to the path of your Solana keypair file for localnet operations."
+    );
+  }
+  return keypairPath;
+}
 
 // Check if localnet validator is running
 async function isValidatorRunning(): Promise<boolean> {
@@ -108,12 +122,13 @@ export async function POST(request: Request) {
         }
 
         // Start the validator using the script
+        const keypairPath = getKeypairPath();
         const result = spawnSync(SCRIPT_PATH, ["start"], {
           timeout: 60000,
           encoding: "utf-8",
           env: {
             ...process.env,
-            KEYPAIR: KEYPAIR_PATH,
+            KEYPAIR: keypairPath,
           },
         });
 
@@ -162,12 +177,13 @@ export async function POST(request: Request) {
 
       case "setup": {
         // Full setup - build, start, fund, initialize
+        const keypairPath = getKeypairPath();
         const result = spawnSync(SCRIPT_PATH, ["setup"], {
           timeout: 180000, // 3 minutes for full setup
           encoding: "utf-8",
           env: {
             ...process.env,
-            KEYPAIR: KEYPAIR_PATH,
+            KEYPAIR: keypairPath,
           },
         });
 

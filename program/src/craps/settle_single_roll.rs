@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use ore_api::consts::*;
-use crate::craps_utils::{calculate_payout, is_field_winner, is_craps};
+use super::utils::{calculate_payout, is_field_winner, is_craps};
 
 /// Calculate field bet payout
 /// Returns (total_return, is_winner) where total_return includes original bet if won

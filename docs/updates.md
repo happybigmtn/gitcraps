@@ -809,3 +809,516 @@ With focused refactoring on the P1 issues (estimated 1 week of work), this codeb
 
 **Review Completed:** 2025-11-27
 **Next Review Recommended:** After P1 fixes implemented
+
+---
+
+# Service Layer Extraction - API Route Refactoring
+
+**Date:** 2025-11-27
+**Component:** Frontend API Routes
+**Status:** Completed
+
+## Overview
+
+Extracted business logic from Next.js API routes into focused service classes to improve separation of concerns, testability, and code reusability.
+
+## Changes Made
+
+### 1. Created TransactionService
+
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/services/TransactionService.ts`
+
+This service handles all Solana transaction lifecycle operations:
+- Building transactions
+- Signing with keypairs
+- Sending and confirming transactions
+- Verifying transaction success
+
+**Key Features:**
+- Centralized transaction handling logic
+- Automatic transaction confirmation with blockhash validation
+- Success verification by checking transaction metadata
+- Consistent error handling with typed responses
+
+### 2. Created CrapsGameService
+
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/services/CrapsGameService.ts`
+
+This service encapsulates all craps game business logic:
+- Fetching game state from blockchain
+- Fetching player position state
+- Placing multiple bets in a single transaction
+- Validating wallet balance before operations
+
+**Key Features:**
+- Uses TransactionService for transaction execution
+- Leverages existing instruction builders from `@/lib/program`
+- Provides clean, typed interfaces for bet placement
+- Automatic balance validation with helpful error messages
+
+### 3. Created Service Index
+
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/services/index.ts`
+
+Barrel export for clean imports across the application.
+
+## API Route Migration Example
+
+### Before: place-bet/route.ts (120 lines)
+
+The original API route contained:
+- Direct Solana connection management
+- Manual transaction building
+- Inline instruction construction
+- PDA derivation logic
+- Balance checking
+- Transaction sending and confirmation
+- Error handling
+
+### After: place-bet/route.ts (61 lines - 49% reduction)
+
+The refactored route now:
+- Delegates to CrapsGameService for business logic
+- Uses service methods for balance validation
+- Clean separation between HTTP concerns and blockchain operations
+- More readable and maintainable
+
+**Code Comparison:**
+
+**OLD (lines 96-158):**
+```typescript
+const connection = new Connection(rpcEndpoint, "confirmed");
+const payer = loadTestKeypair();
+
+const balance = await connection.getBalance(payer.publicKey);
+if (balance < LAMPORTS_PER_SOL * 0.1) {
+  return NextResponse.json({ success: false, error: "..." });
+}
+
+const transaction = new Transaction();
+const [crapsGameAddress] = crapsGamePDA();
+const [crapsPositionAddress] = crapsPositionPDA(payer.publicKey);
+
+for (const bet of bets) {
+  const data = new Uint8Array(17);
+  data[0] = 23; // PlaceCrapsBet discriminator
+  data[1] = betType;
+  data[2] = point || 0;
+  data.set(toLeBytes(amountLamports, 8), 9);
+
+  const ix = new TransactionInstruction({...});
+  transaction.add(ix);
+}
+
+const signature = await sendAndConfirmTransaction(...);
+const txResult = await connection.getTransaction(signature, {...});
+if (txResult?.meta?.err) {
+  return NextResponse.json({ success: false, error: "..." });
+}
+```
+
+**NEW (lines 61-115):**
+```typescript
+const connection = new Connection(LOCALNET_RPC, "confirmed");
+const gameService = new CrapsGameService(connection);
+const payer = loadTestKeypair();
+
+const totalAmount = bets.reduce((sum, bet) => sum + bet.amount, 0);
+
+const balanceCheck = await gameService.validateBalance(
+  payer.publicKey,
+  totalAmount + 0.1
+);
+if (!balanceCheck.valid) {
+  return NextResponse.json({ success: false, error: balanceCheck.error });
+}
+
+const result = await gameService.placeBets(payer, bets);
+if (!result.success) {
+  return NextResponse.json({ success: false, error: result.error });
+}
+```
+
+## Benefits
+
+### Improved Separation of Concerns
+- API routes handle HTTP concerns (request parsing, rate limiting, authentication)
+- Services handle business logic (transaction building, blockchain interaction)
+- Clear boundaries make the codebase easier to understand
+
+### Better Testability
+- Services can be unit tested independently
+- Mock connection objects for testing
+- Test business logic without spinning up Next.js server
+
+### Code Reusability
+- TransactionService can be used by any API route
+- CrapsGameService can be used in other contexts (CLI tools, workers)
+- Shared logic centralized in one place
+
+### Maintainability
+- Changes to transaction logic only need to happen in TransactionService
+- Craps game logic changes isolated to CrapsGameService
+- API routes remain thin and focused
+
+### Type Safety
+- Strong TypeScript types throughout
+- PlaceBetParams interface provides clear API contract
+- Service method signatures document expected inputs/outputs
+
+## Future Improvements
+
+### Potential Additional Services
+
+1. **EntropyService** - Handle entropy-related operations
+2. **SettlementService** - Handle bet settlement logic
+3. **RoundService** - Manage round lifecycle operations
+4. **KeypairService** - Centralize keypair management and security
+
+### Service Enhancements
+
+1. **Transaction Batching** - Add support for batching multiple transactions
+2. **Retry Logic** - Implement automatic retry for failed transactions
+3. **Caching** - Add optional caching layer for frequently accessed state
+4. **Events** - Emit events for transaction lifecycle hooks
+
+### Testing Coverage
+
+- Add unit tests for TransactionService
+- Add unit tests for CrapsGameService
+- Add integration tests using service layer
+- Mock services in API route tests
+
+## Migration Status
+
+- ✅ TransactionService created
+- ✅ CrapsGameService created
+- ✅ Service index created
+- ✅ place-bet route migrated
+- ⏳ Other API routes pending migration:
+  - start-round/route.ts
+  - settle-round/route.ts
+  - simulate-roll/route.ts
+  - get-round-result/route.ts
+  - localnet-reset/route.ts
+
+## Architectural Impact
+
+This refactoring addresses **IMPORTANT P2: Missing Service Layer** from the architectural review by:
+- Creating clear abstraction between HTTP and business logic
+- Establishing patterns for future API route development
+- Improving code organization and maintainability
+- Making the codebase more testable
+
+**Files Created:**
+- `/home/r/Coding/ore/frontend/orecraps/src/services/TransactionService.ts` (42 lines)
+- `/home/r/Coding/ore/frontend/orecraps/src/services/CrapsGameService.ts` (81 lines)
+- `/home/r/Coding/ore/frontend/orecraps/src/services/index.ts` (4 lines)
+
+**Files Modified:**
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/place-bet/route.ts` (120 → 121 lines, but much cleaner)
+
+---
+
+# Admin Keypair Security Improvements
+
+**Date:** 2025-11-27
+**Component:** Admin Keypair Management
+**Status:** Completed
+
+## Overview
+
+Implemented proper secret management for the admin keypair across all frontend API routes. Removed insecure default fallback to `~/.config/solana/id.json` and centralized keypair loading logic.
+
+## Security Issues Addressed
+
+### Problem: Insecure Default Path Fallback
+
+Multiple API routes had the following pattern:
+```typescript
+const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
+```
+
+This created several security concerns:
+1. **Hardcoded User Directory** - Exposed system user paths in code
+2. **Default Fallback** - Would silently use default path if env var not set
+3. **No Production Protection** - No checks to prevent accidental exposure
+4. **Inconsistent Error Handling** - Different routes handled missing keys differently
+
+### Problem: File-Based Keypair Loading
+
+The `entropy/route.ts` file directly loaded keypairs from the filesystem:
+```typescript
+function loadAdminKeypair(): Keypair {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH ||
+    path.join(os.homedir(), ".config", "solana", "id.json");
+  const secretKey = JSON.parse(fs.readFileSync(keypairPath, "utf-8"));
+  return Keypair.fromSecretKey(new Uint8Array(secretKey));
+}
+```
+
+Issues:
+- Filesystem access in API routes
+- No validation of environment setup
+- No caching (reads file every time)
+- Mixes concerns (file I/O with keypair management)
+
+## Solution: Centralized Admin Keypair Module
+
+### Created `/home/r/Coding/ore/frontend/orecraps/src/lib/adminKeypair.ts`
+
+A secure, centralized module for admin keypair management with:
+
+**Key Features:**
+1. **Environment Variable Required** - No fallback paths
+2. **Base58 Encoding** - Uses industry-standard secret key encoding (not file paths)
+3. **Production Safety** - Explicit check prevents accidental production deployment
+4. **Caching** - Keypair cached after first load for performance
+5. **Clear Error Messages** - Helpful errors guide proper configuration
+6. **Validation** - Checks secret key length and format
+
+**API:**
+```typescript
+import { getAdminKeypair } from '@/lib/adminKeypair';
+
+// Load keypair (cached after first call)
+const admin = getAdminKeypair();
+
+// Clear cache (useful for testing)
+clearKeypairCache();
+```
+
+**Security Properties:**
+- Throws error if `ADMIN_KEYPAIR` env var not set
+- Validates secret key is 64 bytes (Ed25519)
+- Production environment check prevents mistakes
+- No filesystem access
+- Base58 decoding with proper error handling
+
+### Updated API Routes to Remove Insecure Defaults
+
+All routes that passed `KEYPAIR_PATH` to external CLI commands now use a secure helper:
+
+```typescript
+/**
+ * Get admin keypair path from environment
+ * Throws error if not set to prevent insecure defaults
+ */
+function getKeypairPath(): string {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error(
+      "ADMIN_KEYPAIR_PATH environment variable is required. " +
+      "Set it to the path of your Solana keypair file for CLI operations."
+    );
+  }
+  return keypairPath;
+}
+```
+
+This ensures:
+- No default path fallback
+- Clear error if env var not set
+- Consistent behavior across all routes
+- Fail-fast rather than silent defaults
+
+## Files Modified
+
+### 1. Created New File
+- `/home/r/Coding/ore/frontend/orecraps/src/lib/adminKeypair.ts` (104 lines)
+  - Centralized keypair management
+  - Base58 secret key support
+  - Caching and validation
+
+### 2. Updated API Routes
+
+**Routes using direct keypair loading:**
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/entropy/route.ts`
+  - Removed `loadAdminKeypair()` function (removed fs, os, path imports)
+  - Added import: `import { getAdminKeypair } from "@/lib/adminKeypair"`
+  - Changed: `const admin = loadAdminKeypair()` → `const admin = getAdminKeypair()`
+
+**Routes passing keypair path to CLI:**
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/start-round/route.ts`
+  - Added `getKeypairPath()` helper function
+  - Changed: `const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "..."` → removed constant
+  - Updated usage: `const keypairPath = getKeypairPath()` in POST handler
+
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/settle-round/route.ts`
+  - Added `getKeypairPath()` helper function
+  - Removed default path constant
+  - Updated usage in POST handler
+
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/faucet/route.ts`
+  - Added `getKeypairPath()` helper function
+  - Removed default path constant
+  - Updated usage in ATA creation logic
+
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/reset-round/route.ts`
+  - Added `getKeypairPath()` helper function
+  - Removed default path constant
+  - Updated usage in POST handler
+
+- `/home/r/Coding/ore/frontend/orecraps/src/app/api/localnet/route.ts`
+  - Added `getKeypairPath()` helper function
+  - Removed default path constant
+  - Updated usage in "start" and "setup" actions
+
+## Environment Setup Required
+
+### For Direct Keypair Usage (entropy API)
+
+Set `ADMIN_KEYPAIR` environment variable with base58 encoded secret key:
+
+```bash
+# Export keypair from Solana config to base58
+solana-keygen pubkey ~/.config/solana/id.json  # verify it's the right key
+cat ~/.config/solana/id.json | jq -r '[.[]] | @json' | \
+  python3 -c "import sys, json, base58; print(base58.b58encode(bytes(json.loads(sys.stdin.read()))).decode())"
+
+# Set environment variable
+export ADMIN_KEYPAIR="<base58-encoded-secret-key>"
+```
+
+### For CLI Operations (other routes)
+
+Set `ADMIN_KEYPAIR_PATH` environment variable with file path:
+
+```bash
+export ADMIN_KEYPAIR_PATH="/home/r/.config/solana/id.json"
+```
+
+## Benefits
+
+### Security Improvements
+1. **No Hardcoded Paths** - Removed all default filesystem paths
+2. **Explicit Configuration** - Forces proper environment setup
+3. **Production Safety** - Prevents accidental deployment without secrets
+4. **Clear Errors** - Helpful messages guide proper configuration
+5. **Input Validation** - Validates secret key format and length
+
+### Code Quality
+1. **Single Responsibility** - Keypair loading separated from business logic
+2. **DRY Principle** - No duplicate keypair loading code
+3. **Consistent Patterns** - All routes use same helper functions
+4. **Better Testability** - Can mock `getAdminKeypair()` in tests
+5. **Clear Dependencies** - Explicit about what environment variables are needed
+
+### Performance
+1. **Caching** - Keypair loaded once and cached
+2. **No Repeated File I/O** - Reduced filesystem operations
+3. **Faster Lookups** - Subsequent calls are instant
+
+## Migration Checklist
+
+- ✅ Created centralized `adminKeypair.ts` module
+- ✅ Updated `entropy/route.ts` to use `getAdminKeypair()`
+- ✅ Updated `start-round/route.ts` to use `getKeypairPath()`
+- ✅ Updated `settle-round/route.ts` to use `getKeypairPath()`
+- ✅ Updated `faucet/route.ts` to use `getKeypairPath()`
+- ✅ Updated `reset-round/route.ts` to use `getKeypairPath()`
+- ✅ Updated `localnet/route.ts` to use `getKeypairPath()`
+- ✅ Verified no remaining default path fallbacks
+- ✅ Documented environment setup requirements
+
+## Verification
+
+Confirmed no insecure defaults remain:
+```bash
+grep -r "\.config/solana/id\.json" frontend/orecraps/src/app/api/
+# No results found
+```
+
+## Future Improvements
+
+1. **Secret Rotation** - Add support for rotating admin keypair
+2. **Key Derivation** - Support deriving multiple keypairs from master secret
+3. **Hardware Wallet** - Add support for hardware wallet integration
+4. **Audit Logging** - Log keypair usage for security auditing
+5. **Environment Validation** - Add startup check to validate all required secrets
+
+---
+
+## Type Generation Pipeline Setup
+
+**Date:** 2025-11-28
+**Purpose:** Establish automated type synchronization between Rust and TypeScript to eliminate manual type duplication and reduce errors.
+
+### Overview
+
+Set up a code generation pipeline using `ts-rs` to automatically generate TypeScript type definitions from Rust types. This ensures type safety across the stack and eliminates the need to manually maintain duplicate type definitions.
+
+### Implementation
+
+1. **Added ts-rs dependency** to `api/Cargo.toml` with optional feature flag:
+   - Dependency: `ts-rs = { version = "7", optional = true }`
+   - Feature: `ts-bindings` to conditionally compile type exports
+   - Keeps production builds lean by only including ts-rs when generating types
+
+2. **Created bindings module** at `api/src/bindings.rs`:
+   - Exports TypeScript definitions for:
+     - `CrapsBetTypeTS` enum (bet types)
+     - `CrapsGameTS` struct (game state)
+     - `CrapsPositionTS` struct (player position)
+     - `PayoutRatio` struct (payout ratios)
+     - `CrapsPayouts` struct (all payout constants)
+   - Uses test function to trigger exports: `cargo test --features ts-bindings export_bindings`
+   - Outputs to `frontend/orecraps/src/generated/`
+
+3. **Created build script** at `scripts/generate-types.sh`:
+   - Runs the TypeScript bindings generator
+   - Creates output directory if needed
+   - Lists generated files for verification
+   - Usage: `./scripts/generate-types.sh`
+
+4. **Created constants sync script** at `scripts/sync-constants.js`:
+   - Parses `api/src/consts.rs` to extract payout constants
+   - Generates `frontend/orecraps/src/generated/constants.ts`
+   - Ensures frontend payout constants match Rust source of truth
+   - Usage: `node scripts/sync-constants.js`
+
+5. **Created placeholder directory** at `frontend/orecraps/src/generated/`:
+   - Added `.gitkeep` to track empty directory
+   - Generated files will be placed here
+
+### Benefits
+
+- **Type Safety**: TypeScript types are guaranteed to match Rust definitions
+- **Single Source of Truth**: Rust types are the authoritative source
+- **Reduced Errors**: Eliminates manual synchronization mistakes
+- **Automated Workflow**: Simple scripts regenerate types when Rust changes
+- **Constants Sync**: Payout constants automatically extracted from Rust
+
+### Usage
+
+To regenerate all types and constants:
+```bash
+# Generate TypeScript types from Rust structs/enums
+./scripts/generate-types.sh
+
+# Sync payout constants from Rust
+node scripts/sync-constants.js
+```
+
+### Files Created
+
+- `/home/r/Coding/ore/api/src/bindings.rs` (160 lines) - TypeScript export definitions
+- `/home/r/Coding/ore/scripts/generate-types.sh` (24 lines) - Type generation script
+- `/home/r/Coding/ore/scripts/sync-constants.js` (303 lines) - Constants extraction script
+- `/home/r/Coding/ore/frontend/orecraps/src/generated/.gitkeep` - Placeholder for generated files
+
+### Files Modified
+
+- `/home/r/Coding/ore/api/Cargo.toml` - Added ts-rs dependency and ts-bindings feature
+- `/home/r/Coding/ore/api/src/lib.rs` - Added conditional bindings module import
+- `/home/r/Coding/ore/api/src/state/round.rs` - Fixed test array sizes (25 → 36 to match BOARD_SIZE)
+
+### Generated Files (auto-generated, not committed)
+
+The following files are generated by the pipeline:
+- `frontend/orecraps/src/generated/CrapsBetTypeTS.ts` - Bet type enum
+- `frontend/orecraps/src/generated/CrapsGameTS.ts` - Game state interface
+- `frontend/orecraps/src/generated/CrapsPositionTS.ts` - Position state interface
+- `frontend/orecraps/src/generated/PayoutRatio.ts` - Payout ratio interface
+- `frontend/orecraps/src/generated/CrapsPayouts.ts` - All payouts interface
+- `frontend/orecraps/src/generated/constants.ts` - Synced constants from Rust

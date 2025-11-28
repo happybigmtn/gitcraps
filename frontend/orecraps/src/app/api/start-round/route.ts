@@ -8,9 +8,23 @@ const debug = createDebugger("StartRound");
 
 // CLI path relative to the project root (workspace target directory)
 const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
-const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
 const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
 const LOCALNET_RPC = "http://127.0.0.1:8899";
+
+/**
+ * Get admin keypair path from environment
+ * Throws error if not set to prevent insecure defaults
+ */
+function getKeypairPath(): string {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error(
+      "ADMIN_KEYPAIR_PATH environment variable is required. " +
+      "Set it to the path of your Solana keypair file for CLI operations."
+    );
+  }
+  return keypairPath;
+}
 
 // Generate a fair dice roll (two 6-sided dice) using cryptographically secure RNG
 function rollDice(): { die1: number; die2: number; sum: number; square: number } {
@@ -59,8 +73,10 @@ export async function POST(request: Request) {
       });
     }
 
+    const keypairPath = getKeypairPath();
+
     debug(`CLI Path: ${CLI_PATH}`);
-    debug(`Keypair: ${KEYPAIR_PATH}`);
+    debug(`Keypair: ${keypairPath}`);
     debug(`RPC: ${rpcEndpoint}`);
 
     // Execute the CLI command using spawnSync for security (no shell interpolation)
@@ -72,7 +88,7 @@ export async function POST(request: Request) {
         COMMAND: "start_round",
         DURATION: String(duration),
         RPC: rpcEndpoint,
-        KEYPAIR: KEYPAIR_PATH,
+        KEYPAIR: keypairPath,
       },
     });
 

@@ -22,12 +22,11 @@ import {
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
 import { apiLimiter } from "@/lib/rateLimit";
+import { getAdminKeypair } from "@/lib/adminKeypair";
 import crypto from "crypto";
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { keccak256 as keccak256Hash } from "js-sha3";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID, SYSTEM_PROGRAM_ID } from "@/lib/constants";
+import { storeSeed, retrieveSeed, deleteSeed } from "@/lib/seedStorage";
 
 const debug = createDebugger("EntropyAPI");
 
@@ -36,29 +35,10 @@ const LOCALNET_RPC = "http://127.0.0.1:8899";
 // Ore instruction discriminator for new_var
 const ORE_NEW_VAR = 19;
 
-/**
- * Load the admin keypair from the Solana config directory
- */
-function loadAdminKeypair(): Keypair {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH ||
-    path.join(os.homedir(), ".config", "solana", "id.json");
-
-  try {
-    const secretKey = JSON.parse(fs.readFileSync(keypairPath, "utf-8"));
-    return Keypair.fromSecretKey(new Uint8Array(secretKey));
-  } catch (error) {
-    debug(`Failed to load keypair from ${keypairPath}:`, error);
-    throw new Error(`Cannot load admin keypair from ${keypairPath}`);
-  }
-}
-
 // Instruction discriminators
 const ENTROPY_OPEN = 0;
 const ENTROPY_SAMPLE = 5;
 const ENTROPY_REVEAL = 4;
-
-// In-memory seed storage (for localnet testing only)
-const seedStorage = new Map<string, Buffer>();
 
 // Counter for unique var IDs
 let varIdCounter = 0n;
@@ -305,7 +285,7 @@ async function handleOpen(params: HandlerParams): Promise<Response> {
   // Generate seed and commit
   const seed = crypto.randomBytes(32);
   const commit = keccak256(seed);
-  seedStorage.set(varAddress.toBase58(), seed);
+  storeSeed(varAddress.toBase58(), seed);
 
   const currentSlot = await connection.getSlot();
   const endAt = BigInt(currentSlot + 5); // 5 slots from now
@@ -430,7 +410,7 @@ async function handleReveal(params: HandlerParams): Promise<Response> {
   }
 
   // Get stored seed
-  const seed = seedStorage.get(varAddress.toBase58());
+  const seed = retrieveSeed(varAddress.toBase58());
   if (!seed) {
     return NextResponse.json({
       success: false,
@@ -483,7 +463,7 @@ async function handleFullCycle(params: HandlerParams): Promise<Response> {
   // Step 1: Open via ore's new_var - always create new
   const seed = crypto.randomBytes(32);
   const commit = keccak256(seed);
-  seedStorage.set(currentVarAddress.toBase58(), seed);
+  storeSeed(currentVarAddress.toBase58(), seed);
 
   const openSlot = await connection.getSlot();
 
@@ -661,7 +641,7 @@ async function handleStatus(params: HandlerParams): Promise<Response> {
   }
 
   const currentSlot = await connection.getSlot();
-  const hasSeed = seedStorage.has(varAddress.toBase58());
+  const hasSeed = retrieveSeed(varAddress.toBase58()) !== null;
 
   return NextResponse.json({
     success: true,
@@ -731,7 +711,7 @@ export async function POST(request: Request) {
     const action = body.action || "full-cycle";
 
     const connection = new Connection(LOCALNET_RPC, "confirmed");
-    const admin = loadAdminKeypair();
+    const admin = getAdminKeypair();
 
     // Get board and config addresses
     const [boardAddress] = boardPDA();

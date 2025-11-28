@@ -12,7 +12,7 @@ pub fn process_set_swap_program(accounts: &[AccountInfo<'_>], _data: &[u8]) -> P
         .as_account_mut::<Config>(&ore_api::ID)?
         .assert_mut_err(
             |c| c.admin == *signer_info.key,
-            OreError::NotAuthorized.into(),
+            OreError::InvalidAuthority.into(),
         )?;
     new_swap_program_info.is_executable()?;
 

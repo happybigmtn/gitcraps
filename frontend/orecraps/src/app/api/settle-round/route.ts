@@ -9,9 +9,23 @@ const debug = createDebugger("SettleRound");
 
 // CLI path relative to the project root (workspace target directory)
 const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
-const KEYPAIR_PATH = process.env.ADMIN_KEYPAIR_PATH || "/home/r/.config/solana/id.json";
 const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
 const LOCALNET_RPC = "http://127.0.0.1:8899";
+
+/**
+ * Get admin keypair path from environment
+ * Throws error if not set to prevent insecure defaults
+ */
+function getKeypairPath(): string {
+  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
+  if (!keypairPath) {
+    throw new Error(
+      "ADMIN_KEYPAIR_PATH environment variable is required. " +
+      "Set it to the path of your Solana keypair file for CLI operations."
+    );
+  }
+  return keypairPath;
+}
 
 /**
  * Settle the current mining round on-chain.
@@ -35,9 +49,11 @@ export async function POST(request: Request) {
     const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';
     const rpcEndpoint = ALLOWED_NETWORK === "localnet" ? LOCALNET_RPC : DEVNET_RPC;
 
+    const keypairPath = getKeypairPath();
+
     debug(`Settling round on ${ALLOWED_NETWORK}...`);
     debug(`CLI Path: ${CLI_PATH}`);
-    debug(`Keypair: ${KEYPAIR_PATH}`);
+    debug(`Keypair: ${keypairPath}`);
     debug(`RPC: ${rpcEndpoint}`);
 
     // Execute the CLI command using spawnSync for security (no shell interpolation)
@@ -48,7 +64,7 @@ export async function POST(request: Request) {
         ...process.env,
         COMMAND: "reset",
         RPC: rpcEndpoint,
-        KEYPAIR: KEYPAIR_PATH,
+        KEYPAIR: keypairPath,
       },
     });
 

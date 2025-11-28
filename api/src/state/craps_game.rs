@@ -33,6 +33,9 @@ pub struct CrapsGame {
 
     /// Total SOL collected from losing craps bets.
     pub total_collected: u64,
+
+    /// Total potential payouts reserved for pending bets
+    pub reserved_payouts: u64,
 }
 
 impl CrapsGame {

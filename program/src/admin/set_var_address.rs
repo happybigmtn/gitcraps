@@ -14,7 +14,7 @@ pub fn process_set_var_address(accounts: &[AccountInfo<'_>], _data: &[u8]) -> Pr
         .as_account_mut::<Config>(&ore_api::ID)?
         .assert_mut_err(
             |c| c.admin == *signer_info.key,
-            OreError::NotAuthorized.into(),
+            OreError::InvalidAuthority.into(),
         )?;
     new_var_address_info
         .as_account::<Var>(&entropy_api::ID)?
