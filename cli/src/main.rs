@@ -29,6 +29,111 @@ use spl_associated_token_account::get_associated_token_address;
 use spl_token::amount_to_ui_amount;
 use steel::{AccountDeserialize, AccountMeta, Clock, Discriminator, Instruction};
 
+#[derive(Debug, Clone, Copy)]
+enum Command {
+    Initialize,
+    Automations,
+    Clock,
+    Claim,
+    Board,
+    Config,
+    Bury,
+    Reset,
+    Treasury,
+    Miner,
+    Deploy,
+    Stake,
+    DeployAll,
+    Round,
+    SetAdmin,
+    SetFeeCollector,
+    Ata,
+    Checkpoint,
+    CheckpointAll,
+    CloseAll,
+    ParticipatingMiners,
+    NewVar,
+    SetAdminFee,
+    SetSwapProgram,
+    SetVarAddress,
+    Keys,
+    Lut,
+    StartRound,
+}
+
+impl Command {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "initialize" => Some(Self::Initialize),
+            "automations" => Some(Self::Automations),
+            "clock" => Some(Self::Clock),
+            "claim" => Some(Self::Claim),
+            "board" => Some(Self::Board),
+            "config" => Some(Self::Config),
+            "bury" => Some(Self::Bury),
+            "reset" => Some(Self::Reset),
+            "treasury" => Some(Self::Treasury),
+            "miner" => Some(Self::Miner),
+            "deploy" => Some(Self::Deploy),
+            "stake" => Some(Self::Stake),
+            "deploy_all" => Some(Self::DeployAll),
+            "round" => Some(Self::Round),
+            "set_admin" => Some(Self::SetAdmin),
+            "set_fee_collector" => Some(Self::SetFeeCollector),
+            "ata" => Some(Self::Ata),
+            "checkpoint" => Some(Self::Checkpoint),
+            "checkpoint_all" => Some(Self::CheckpointAll),
+            "close_all" => Some(Self::CloseAll),
+            "participating_miners" => Some(Self::ParticipatingMiners),
+            "new_var" => Some(Self::NewVar),
+            "set_admin_fee" => Some(Self::SetAdminFee),
+            "set_swap_program" => Some(Self::SetSwapProgram),
+            "set_var_address" => Some(Self::SetVarAddress),
+            "keys" => Some(Self::Keys),
+            "lut" => Some(Self::Lut),
+            "start_round" => Some(Self::StartRound),
+            _ => None,
+        }
+    }
+
+    async fn execute(
+        &self,
+        rpc: &RpcClient,
+        payer: &solana_sdk::signature::Keypair,
+    ) -> Result<(), anyhow::Error> {
+        match self {
+            Self::Initialize => initialize(rpc, payer).await,
+            Self::Automations => log_automations(rpc).await,
+            Self::Clock => log_clock(rpc).await,
+            Self::Claim => claim(rpc, payer).await,
+            Self::Board => log_board(rpc).await,
+            Self::Config => log_config(rpc).await,
+            Self::Bury => bury(rpc, payer).await,
+            Self::Reset => reset(rpc, payer).await,
+            Self::Treasury => log_treasury(rpc).await,
+            Self::Miner => log_miner(rpc, payer).await,
+            Self::Deploy => deploy(rpc, payer).await,
+            Self::Stake => log_stake(rpc, payer).await,
+            Self::DeployAll => deploy_all(rpc, payer).await,
+            Self::Round => log_round(rpc).await,
+            Self::SetAdmin => set_admin(rpc, payer).await,
+            Self::SetFeeCollector => set_fee_collector(rpc, payer).await,
+            Self::Ata => ata(rpc, payer).await,
+            Self::Checkpoint => checkpoint(rpc, payer).await,
+            Self::CheckpointAll => checkpoint_all(rpc, payer).await,
+            Self::CloseAll => close_all(rpc, payer).await,
+            Self::ParticipatingMiners => participating_miners(rpc).await,
+            Self::NewVar => new_var(rpc, payer).await,
+            Self::SetAdminFee => set_admin_fee(rpc, payer).await,
+            Self::SetSwapProgram => set_swap_program(rpc, payer).await,
+            Self::SetVarAddress => set_var_address(rpc, payer).await,
+            Self::Keys => keys().await,
+            Self::Lut => lut(rpc, payer).await,
+            Self::StartRound => start_round(rpc, payer).await,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Read keypair from file
@@ -37,99 +142,12 @@ async fn main() {
 
     // Build transaction
     let rpc = RpcClient::new(std::env::var("RPC").expect("Missing RPC env var"));
-    match std::env::var("COMMAND")
-        .expect("Missing COMMAND env var")
-        .as_str()
-    {
-        "initialize" => {
-            initialize(&rpc, &payer).await.unwrap();
-        }
-        "automations" => {
-            log_automations(&rpc).await.unwrap();
-        }
-        "clock" => {
-            log_clock(&rpc).await.unwrap();
-        }
-        "claim" => {
-            claim(&rpc, &payer).await.unwrap();
-        }
-        "board" => {
-            log_board(&rpc).await.unwrap();
-        }
-        "config" => {
-            log_config(&rpc).await.unwrap();
-        }
-        "bury" => {
-            bury(&rpc, &payer).await.unwrap();
-        }
-        "reset" => {
-            reset(&rpc, &payer).await.unwrap();
-        }
-        "treasury" => {
-            log_treasury(&rpc).await.unwrap();
-        }
-        "miner" => {
-            log_miner(&rpc, &payer).await.unwrap();
-        }
-        // "pool" => {
-        //     log_meteora_pool(&rpc).await.unwrap();
-        // }
-        "deploy" => {
-            deploy(&rpc, &payer).await.unwrap();
-        }
-        "stake" => {
-            log_stake(&rpc, &payer).await.unwrap();
-        }
-        "deploy_all" => {
-            deploy_all(&rpc, &payer).await.unwrap();
-        }
-        "round" => {
-            log_round(&rpc).await.unwrap();
-        }
-        "set_admin" => {
-            set_admin(&rpc, &payer).await.unwrap();
-        }
-        "set_fee_collector" => {
-            set_fee_collector(&rpc, &payer).await.unwrap();
-        }
-        "ata" => {
-            ata(&rpc, &payer).await.unwrap();
-        }
-        "checkpoint" => {
-            checkpoint(&rpc, &payer).await.unwrap();
-        }
-        "checkpoint_all" => {
-            checkpoint_all(&rpc, &payer).await.unwrap();
-        }
-        "close_all" => {
-            close_all(&rpc, &payer).await.unwrap();
-        }
-        "participating_miners" => {
-            participating_miners(&rpc).await.unwrap();
-        }
-        "new_var" => {
-            new_var(&rpc, &payer).await.unwrap();
-        }
-        "set_admin_fee" => {
-            set_admin_fee(&rpc, &payer).await.unwrap();
-        }
-        "set_swap_program" => {
-            set_swap_program(&rpc, &payer).await.unwrap();
-        }
-        "set_var_address" => {
-            set_var_address(&rpc, &payer).await.unwrap();
-        }
-        "keys" => {
-            keys().await.unwrap();
-        }
-        "lut" => {
-            lut(&rpc, &payer).await.unwrap();
-        }
-        "start_round" => {
-            start_round(&rpc, &payer).await.unwrap();
-        }
-        _ => panic!("Invalid command"),
-    };
+
+    let command_str = std::env::var("COMMAND").expect("Missing COMMAND env var");
+    let command = Command::from_str(&command_str)
+        .unwrap_or_else(|| panic!("Invalid command: {}", command_str));
+
+    command.execute(&rpc, &payer).await.unwrap();
 }
 
 async fn initialize(
@@ -141,7 +159,10 @@ async fn initialize(
     // Check if already initialized
     let board_pda = ore_api::state::board_pda();
     if let Ok(_) = rpc.get_account(&board_pda.0).await {
-        println!("Program already initialized! Board account exists at: {}", board_pda.0);
+        println!(
+            "Program already initialized! Board account exists at: {}",
+            board_pda.0
+        );
         return Ok(());
     }
 
@@ -234,8 +255,12 @@ async fn start_round(
     let board = get_board(rpc).await?;
     let round_id = board.round_id;
 
-    println!("Starting round {} with duration {} slots (~{} minutes)...",
-        round_id, duration, (duration as f64 * 0.4) / 60.0);
+    println!(
+        "Starting round {} with duration {} slots (~{} minutes)...",
+        round_id,
+        duration,
+        (duration as f64 * 0.4) / 60.0
+    );
 
     let ix = ore_api::sdk::start_round(payer.pubkey(), round_id, duration);
     let sig = submit_transaction(rpc, payer, &[ix]).await?;
@@ -546,9 +571,15 @@ async fn deploy(
     let mut squares = [false; 36];
     squares[square_id as usize] = true;
 
-    println!("Deploying {} lamports to square {} with dice prediction: {}",
-        amount, square_id,
-        if dice_prediction == 0 { "SAFE MODE".to_string() } else { format!("{}", dice_prediction) }
+    println!(
+        "Deploying {} lamports to square {} with dice prediction: {}",
+        amount,
+        square_id,
+        if dice_prediction == 0 {
+            "SAFE MODE".to_string()
+        } else {
+            format!("{}", dice_prediction)
+        }
     );
 
     let ix = ore_api::sdk::deploy(
@@ -581,9 +612,14 @@ async fn deploy_all(
     let board = get_board(rpc).await?;
     let squares = [true; 36];
 
-    println!("Deploying {} lamports to ALL squares with dice prediction: {}",
+    println!(
+        "Deploying {} lamports to ALL squares with dice prediction: {}",
         amount,
-        if dice_prediction == 0 { "SAFE MODE".to_string() } else { format!("{}", dice_prediction) }
+        if dice_prediction == 0 {
+            "SAFE MODE".to_string()
+        } else {
+            format!("{}", dice_prediction)
+        }
     );
     let ix = ore_api::sdk::deploy(
         payer.pubkey(),
@@ -830,10 +866,14 @@ async fn log_round(rpc: &RpcClient) -> Result<(), anyhow::Error> {
     println!("  Total winnings: {}", round.total_winnings);
     // Dice results
     if round.dice_sum > 0 {
-        println!("  Dice roll: {} + {} = {}",
-            round.dice_results[0], round.dice_results[1], round.dice_sum);
-        println!("  Dice multiplier (if matched): {}x",
-            Round::dice_multiplier(round.dice_sum) as f64 / 100.0);
+        println!(
+            "  Dice roll: {} + {} = {}",
+            round.dice_results[0], round.dice_results[1], round.dice_sum
+        );
+        println!(
+            "  Dice multiplier (if matched): {}x",
+            Round::dice_multiplier(round.dice_sum) as f64 / 100.0
+        );
     } else {
         println!("  Dice roll: (not yet rolled)");
     }
@@ -872,8 +912,11 @@ async fn log_miner(
     if dice_pred == 0 {
         println!("  dice_prediction: SAFE MODE (guaranteed ~1/6 base reward)");
     } else if dice_pred >= 2 && dice_pred <= 12 {
-        println!("  dice_prediction: {} ({}x multiplier if correct)",
-            dice_pred, Round::dice_multiplier(dice_pred) as f64 / 100.0);
+        println!(
+            "  dice_prediction: {} ({}x multiplier if correct)",
+            dice_pred,
+            Round::dice_multiplier(dice_pred) as f64 / 100.0
+        );
     } else {
         println!("  dice_prediction: {} (invalid)", dice_pred);
     }
