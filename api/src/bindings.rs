@@ -140,6 +140,33 @@ mod ts_types {
         pub hard4_10: PayoutRatio,
         pub hard6_8: PayoutRatio,
     }
+
+    /// TypeScript export for OreError enum
+    #[derive(TS)]
+    #[ts(export, export_to = "../frontend/orecraps/src/generated/")]
+    #[allow(dead_code)]
+    pub struct OreErrorTS {
+        // Game Errors (1000-1999)
+        pub already_settled: u32,      // 1001
+        pub round_not_active: u32,     // 1002
+        pub round_expired: u32,        // 1003
+        pub insufficient_bankroll: u32, // 1004
+        pub bet_too_small: u32,        // 1005
+        pub bet_too_large: u32,        // 1006
+        pub no_bets_to_settle: u32,    // 1007
+
+        // Validation Errors (2000-2999)
+        pub invalid_bet_type: u32,     // 2001
+        pub invalid_bet_amount: u32,   // 2002
+        pub invalid_point: u32,        // 2003
+        pub invalid_authority: u32,    // 2004
+        pub invalid_account: u32,      // 2005
+
+        // System Errors (3000-3999)
+        pub arithmetic_overflow: u32,  // 3001
+        pub account_not_found: u32,    // 3002
+        pub deserialization_failed: u32, // 3003
+    }
 }
 
 #[cfg(feature = "ts-bindings")]
@@ -156,5 +183,6 @@ mod tests {
         CrapsPositionTS::export().expect("Failed to export CrapsPositionTS");
         PayoutRatio::export().expect("Failed to export PayoutRatio");
         CrapsPayouts::export().expect("Failed to export CrapsPayouts");
+        OreErrorTS::export().expect("Failed to export OreErrorTS");
     }
 }

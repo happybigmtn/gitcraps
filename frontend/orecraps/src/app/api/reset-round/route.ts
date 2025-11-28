@@ -1,28 +1,7 @@
 import { NextResponse } from "next/server";
 import { spawnSync } from "child_process";
-import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
-
-// CLI path relative to the project root (workspace target directory)
-const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
-
-// SECURITY: RPC endpoint must come from environment variable, no hardcoded API keys
-const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
-
-/**
- * Get admin keypair path from environment
- * Throws error if not set to prevent insecure defaults
- */
-function getKeypairPath(): string {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
-  if (!keypairPath) {
-    throw new Error(
-      "ADMIN_KEYPAIR_PATH environment variable is required. " +
-      "Set it to the path of your Solana keypair file for CLI operations."
-    );
-  }
-  return keypairPath;
-}
+import { CLI_PATH, DEVNET_RPC, getKeypairPath } from "@/lib/cliConfig";
 
 export async function POST() {
   try {
@@ -35,7 +14,7 @@ export async function POST() {
       env: {
         ...process.env,
         COMMAND: "reset",
-        RPC: RPC_ENDPOINT,
+        RPC: DEVNET_RPC,
         KEYPAIR: keypairPath,
       },
     });

@@ -1,31 +1,11 @@
 import { NextResponse } from "next/server";
 import { spawnSync } from "child_process";
-import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
+import { CLI_PATH, LOCALNET_RPC, DEVNET_RPC, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
 
 const debug = createDebugger("SettleRound");
-
-// CLI path relative to the project root (workspace target directory)
-const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
-const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
-const LOCALNET_RPC = "http://127.0.0.1:8899";
-
-/**
- * Get admin keypair path from environment
- * Throws error if not set to prevent insecure defaults
- */
-function getKeypairPath(): string {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
-  if (!keypairPath) {
-    throw new Error(
-      "ADMIN_KEYPAIR_PATH environment variable is required. " +
-      "Set it to the path of your Solana keypair file for CLI operations."
-    );
-  }
-  return keypairPath;
-}
 
 /**
  * Settle the current mining round on-chain.
@@ -47,7 +27,7 @@ export async function POST(request: Request) {
 
     // Use server-side network configuration instead of trusting client
     const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';
-    const rpcEndpoint = ALLOWED_NETWORK === "localnet" ? LOCALNET_RPC : DEVNET_RPC;
+    const rpcEndpoint = getRpcEndpoint(ALLOWED_NETWORK);
 
     const keypairPath = getKeypairPath();
 

@@ -18,20 +18,14 @@ export class TransactionService {
 
       const signature = await this.connection.sendRawTransaction(transaction.serialize());
 
-      await this.connection.confirmTransaction({
+      const result = await this.connection.confirmTransaction({
         signature,
         blockhash,
         lastValidBlockHeight,
       }, commitment);
 
-      // Verify success
-      const txResult = await this.connection.getTransaction(signature, {
-        commitment,
-        maxSupportedTransactionVersion: 0,
-      });
-
-      if (txResult?.meta?.err) {
-        return { signature, success: false, error: JSON.stringify(txResult.meta.err) };
+      if (result.value.err) {
+        return { signature, success: false, error: JSON.stringify(result.value.err) };
       }
 
       return { signature, success: true };

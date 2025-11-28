@@ -3,11 +3,9 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { ORE_PROGRAM_ID } from "@/lib/constants";
+import { LOCALNET_RPC, DEVNET_RPC, getRpcEndpoint } from "@/lib/cliConfig";
 
 const debug = createDebugger("GetRoundResult");
-
-const LOCALNET_RPC = "http://127.0.0.1:8899";
-const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
 
 // Board PDA
 function boardPDA(): [PublicKey, number] {
@@ -74,7 +72,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const network = url.searchParams.get("network") || "localnet";
-    const rpcEndpoint = network === "localnet" ? LOCALNET_RPC : DEVNET_RPC;
+    const rpcEndpoint = getRpcEndpoint(network);
 
     debug(`Fetching round result from ${network}`);
 

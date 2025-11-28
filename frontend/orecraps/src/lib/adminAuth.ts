@@ -7,6 +7,28 @@
  */
 
 import { NextResponse } from "next/server";
+import crypto from "crypto";
+
+/**
+ * Constant-time string comparison to prevent timing attacks
+ *
+ * @param a - First string to compare
+ * @param b - Second string to compare
+ * @returns true if strings are equal, false otherwise
+ */
+function constantTimeCompare(a: string, b: string): boolean {
+  let aStr = a;
+  let bStr = b;
+
+  if (aStr.length !== bStr.length) {
+    // Pad to same length to avoid length-based timing leak
+    const maxLen = Math.max(aStr.length, bStr.length);
+    aStr = aStr.padEnd(maxLen, "\0");
+    bStr = bStr.padEnd(maxLen, "\0");
+  }
+
+  return crypto.timingSafeEqual(Buffer.from(aStr), Buffer.from(bStr));
+}
 
 export interface AuthResult {
   authorized: boolean;
@@ -55,7 +77,7 @@ export function validateAdminToken(request: Request): AuthResult {
     };
   }
 
-  if (token !== adminToken) {
+  if (!constantTimeCompare(token, adminToken)) {
     return {
       authorized: false,
       response: NextResponse.json(

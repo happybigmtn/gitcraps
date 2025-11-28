@@ -1,3 +1,4 @@
+use ore_api::error::OreError;
 use ore_api::prelude::*;
 use solana_program::log::sol_log;
 use steel::*;
@@ -11,12 +12,12 @@ fn calculate_max_payout(bet_type: u8, point: u8, amount: u64) -> Result<u64, Pro
     let calc = |num: u64, den: u64| -> Result<u64, ProgramError> {
         let payout = amount
             .checked_mul(num)
-            .ok_or(ProgramError::ArithmeticOverflow)?
+            .ok_or(OreError::ArithmeticOverflow)?
             .checked_div(den)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
+            .ok_or(OreError::ArithmeticOverflow)?;
         amount
             .checked_add(payout)
-            .ok_or(ProgramError::ArithmeticOverflow)
+            .ok_or(OreError::ArithmeticOverflow.into())
     };
 
     match bet_type {
@@ -180,13 +181,13 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
 
     // Validate bet amount.
     if amount == 0 {
-        return Err(ProgramError::InvalidArgument);
+        return Err(OreError::InvalidBetAmount.into());
     }
 
     // Add maximum bet validation
     if amount > ore_api::consts::MAX_BET_AMOUNT {
         sol_log("Bet exceeds maximum allowed amount");
-        return Err(ProgramError::InvalidArgument);
+        return Err(OreError::InvalidBetAmount.into());
     }
 
     // Calculate max potential payout for this bet
@@ -195,12 +196,12 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
     // Calculate available bankroll (total minus already reserved for pending bets)
     let available_bankroll = craps_game.house_bankroll
         .checked_sub(craps_game.reserved_payouts)
-        .ok_or(ProgramError::InsufficientFunds)?;
+        .ok_or(OreError::InsufficientBankroll)?;
 
     // Check if this bet's max payout fits in available bankroll
     if max_payout > available_bankroll {
         sol_log("Bet exceeds available house bankroll (after reserved payouts)");
-        return Err(ProgramError::InsufficientFunds);
+        return Err(OreError::InsufficientBankroll.into());
     }
 
     // Check if bet is valid based on game state.
@@ -213,52 +214,52 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         0 => { // PassLine
             if !is_come_out {
                 sol_log("Pass Line bet only allowed during come-out");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             craps_position.pass_line = craps_position.pass_line
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Pass Line bet placed: {}", amount).as_str());
         }
         // Don't Pass - only allowed during come-out
         1 => { // DontPass
             if !is_come_out {
                 sol_log("Don't Pass bet only allowed during come-out");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             craps_position.dont_pass = craps_position.dont_pass
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Don't Pass bet placed: {}", amount).as_str());
         }
         // Pass Odds - only allowed after point established
         2 => { // PassOdds
             if !has_point {
                 sol_log("Pass Odds only allowed after point established");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             if craps_position.pass_line == 0 {
                 sol_log("Must have Pass Line bet to place Pass Odds");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             craps_position.pass_odds = craps_position.pass_odds
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Pass Odds bet placed: {}", amount).as_str());
         }
         // Don't Pass Odds - only allowed after point established
         3 => { // DontPassOdds
             if !has_point {
                 sol_log("Don't Pass Odds only allowed after point established");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             if craps_position.dont_pass == 0 {
                 sol_log("Must have Don't Pass bet to place Don't Pass Odds");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
             craps_position.dont_pass_odds = craps_position.dont_pass_odds
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Don't Pass Odds bet placed: {}", amount).as_str());
         }
         // Come - only allowed after point established (not during come-out)
@@ -271,11 +272,11 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = point_to_index(point) {
                 craps_position.come_bets[idx] = craps_position.come_bets[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 sol_log(&format!("Come bet placed on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid point for Come bet");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Don't Come
@@ -283,11 +284,11 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = point_to_index(point) {
                 craps_position.dont_come_bets[idx] = craps_position.dont_come_bets[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 sol_log(&format!("Don't Come bet placed on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid point for Don't Come bet");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Come Odds
@@ -295,15 +296,15 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = point_to_index(point) {
                 if craps_position.come_bets[idx] == 0 {
                     sol_log("Must have Come bet to place Come Odds");
-                    return Err(ProgramError::InvalidArgument);
+                    return Err(OreError::InvalidBetType.into());
                 }
                 craps_position.come_odds[idx] = craps_position.come_odds[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 sol_log(&format!("Come Odds placed on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid point for Come Odds");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Don't Come Odds
@@ -311,15 +312,15 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = point_to_index(point) {
                 if craps_position.dont_come_bets[idx] == 0 {
                     sol_log("Must have Don't Come bet to place Don't Come Odds");
-                    return Err(ProgramError::InvalidArgument);
+                    return Err(OreError::InvalidBetType.into());
                 }
                 craps_position.dont_come_odds[idx] = craps_position.dont_come_odds[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 sol_log(&format!("Don't Come Odds placed on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid point for Don't Come Odds");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Place bet
@@ -327,12 +328,12 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = point_to_index(point) {
                 craps_position.place_bets[idx] = craps_position.place_bets[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 craps_position.set_place_working(true);
                 sol_log(&format!("Place bet on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid point for Place bet");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Hardway
@@ -347,76 +348,76 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
             if let Some(idx) = hardway_idx {
                 craps_position.hardways[idx] = craps_position.hardways[idx]
                     .checked_add(amount)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
+                    .ok_or(OreError::ArithmeticOverflow)?;
                 sol_log(&format!("Hardway bet on {}: {}", point, amount).as_str());
             } else {
                 sol_log("Invalid hardway number (must be 4, 6, 8, or 10)");
-                return Err(ProgramError::InvalidArgument);
+                return Err(OreError::InvalidBetType.into());
             }
         }
         // Field - single roll bet
         10 => { // Field
             craps_position.field_bet = craps_position.field_bet
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Field bet placed: {}", amount).as_str());
         }
         // Any Seven - single roll bet
         11 => { // AnySeven
             craps_position.any_seven = craps_position.any_seven
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Any Seven bet placed: {}", amount).as_str());
         }
         // Any Craps - single roll bet
         12 => { // AnyCraps
             craps_position.any_craps = craps_position.any_craps
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Any Craps bet placed: {}", amount).as_str());
         }
         // Yo Eleven - single roll bet
         13 => { // YoEleven
             craps_position.yo_eleven = craps_position.yo_eleven
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Yo Eleven bet placed: {}", amount).as_str());
         }
         // Aces (2) - single roll bet
         14 => { // Aces
             craps_position.aces = craps_position.aces
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Aces (2) bet placed: {}", amount).as_str());
         }
         // Twelve - single roll bet
         15 => { // Twelve
             craps_position.twelve = craps_position.twelve
                 .checked_add(amount)
-                .ok_or(ProgramError::ArithmeticOverflow)?;
+                .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Twelve bet placed: {}", amount).as_str());
         }
         _ => {
             sol_log("Invalid bet type");
-            return Err(ProgramError::InvalidArgument);
+            return Err(OreError::InvalidBetType.into());
         }
     }
 
     // Update totals.
     craps_position.total_wagered = craps_position.total_wagered
         .checked_add(amount)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(OreError::ArithmeticOverflow)?;
 
     // Reserve this payout in the house bankroll
     craps_game.reserved_payouts = craps_game.reserved_payouts
         .checked_add(max_payout)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(OreError::ArithmeticOverflow)?;
 
     // Transfer SOL from signer to craps game (house bankroll).
     craps_game_info.collect(amount, &signer_info)?;
     craps_game.house_bankroll = craps_game.house_bankroll
         .checked_add(amount)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(OreError::ArithmeticOverflow)?;
 
     sol_log(&format!("Total wagered: {}, House bankroll: {}, Reserved payouts: {}",
         craps_position.total_wagered,

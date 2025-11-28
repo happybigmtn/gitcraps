@@ -1,25 +1,13 @@
 import { NextResponse } from "next/server";
-import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { apiLimiter } from "@/lib/rateLimit";
 import { CrapsGameService } from "@/services";
+import { loadTestKeypair } from "@/lib/testKeypair";
+import { LOCALNET_RPC } from "@/lib/cliConfig";
 
 const debug = createDebugger("PlaceBet");
-
-const LOCALNET_RPC = "http://127.0.0.1:8899";
-
-function loadTestKeypair(): Keypair {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Test keypairs not allowed in production');
-  }
-  const seedString = process.env.TEST_KEYPAIR_SEED;
-  if (!seedString) {
-    throw new Error('TEST_KEYPAIR_SEED environment variable not set');
-  }
-  const seed = Buffer.from(seedString, 'base64');
-  return Keypair.fromSeed(seed);
-}
 
 /**
  * Place a craps bet directly using server-side keypair (for localnet testing).

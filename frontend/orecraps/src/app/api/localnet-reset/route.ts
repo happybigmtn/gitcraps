@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   Connection,
-  Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
@@ -13,23 +12,11 @@ import {
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID } from "@/lib/constants";
+import { loadTestKeypair } from "@/lib/testKeypair";
+import { LOCALNET_RPC } from "@/lib/cliConfig";
 import crypto from "crypto";
 
 const debug = createDebugger("LocalnetReset");
-
-const LOCALNET_RPC = "http://127.0.0.1:8899";
-
-function loadTestKeypair(): Keypair {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Test keypairs not allowed in production');
-  }
-  const seedString = process.env.TEST_KEYPAIR_SEED;
-  if (!seedString) {
-    throw new Error('TEST_KEYPAIR_SEED environment variable not set');
-  }
-  const seed = Buffer.from(seedString, 'base64');
-  return Keypair.fromSeed(seed);
-}
 
 // PDAs
 function boardPDA(): [PublicKey, number] {

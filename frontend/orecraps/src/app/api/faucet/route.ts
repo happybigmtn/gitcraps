@@ -3,26 +3,11 @@ import { spawnSync } from "child_process";
 import { PublicKey } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
+import { LOCALNET_RPC, getKeypairPath } from "@/lib/cliConfig";
 
 const debug = createDebugger("Faucet");
 
-const LOCALNET_RPC = "http://127.0.0.1:8899";
 const LOCALNET_RNG_MINT = "RaBMafFSe53m9VU7CFf7ZWv7cQwUYFwBt926YZKLAVC";
-
-/**
- * Get admin keypair path from environment
- * Throws error if not set to prevent insecure defaults
- */
-function getKeypairPath(): string {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
-  if (!keypairPath) {
-    throw new Error(
-      "ADMIN_KEYPAIR_PATH environment variable is required. " +
-      "Set it to the path of your Solana keypair file for faucet operations."
-    );
-  }
-  return keypairPath;
-}
 
 // Amount to airdrop: 1000 RNG tokens (with 9 decimals)
 const AIRDROP_AMOUNT = "1000";

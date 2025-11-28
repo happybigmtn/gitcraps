@@ -27,10 +27,9 @@ import crypto from "crypto";
 import { keccak256 as keccak256Hash } from "js-sha3";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID, SYSTEM_PROGRAM_ID } from "@/lib/constants";
 import { storeSeed, retrieveSeed, deleteSeed } from "@/lib/seedStorage";
+import { LOCALNET_RPC } from "@/lib/cliConfig";
 
 const debug = createDebugger("EntropyAPI");
-
-const LOCALNET_RPC = "http://127.0.0.1:8899";
 
 // Ore instruction discriminator for new_var
 const ORE_NEW_VAR = 19;

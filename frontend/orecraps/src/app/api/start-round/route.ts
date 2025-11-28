@@ -1,30 +1,10 @@
 import { NextResponse } from "next/server";
 import { spawnSync } from "child_process";
-import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
+import { CLI_PATH, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
 
 const debug = createDebugger("StartRound");
-
-// CLI path relative to the project root (workspace target directory)
-const CLI_PATH = path.resolve(process.cwd(), "../../target/release/ore-cli");
-const DEVNET_RPC = process.env.NEXT_PUBLIC_RPC_ENDPOINT || "https://api.devnet.solana.com";
-const LOCALNET_RPC = "http://127.0.0.1:8899";
-
-/**
- * Get admin keypair path from environment
- * Throws error if not set to prevent insecure defaults
- */
-function getKeypairPath(): string {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
-  if (!keypairPath) {
-    throw new Error(
-      "ADMIN_KEYPAIR_PATH environment variable is required. " +
-      "Set it to the path of your Solana keypair file for CLI operations."
-    );
-  }
-  return keypairPath;
-}
 
 // Generate a fair dice roll (two 6-sided dice) using cryptographically secure RNG
 function rollDice(): { die1: number; die2: number; sum: number; square: number } {
@@ -49,7 +29,7 @@ export async function POST(request: Request) {
     // Simulated mode: default to true for localnet, can be overridden
     const simulated = body.simulated !== undefined ? body.simulated : (network === "localnet");
 
-    const rpcEndpoint = network === "localnet" ? LOCALNET_RPC : DEVNET_RPC;
+    const rpcEndpoint = getRpcEndpoint(network);
 
     debug(`Starting round with duration ${duration} slots on ${network}...`);
     debug(`Simulated: ${simulated}`);

@@ -5,9 +5,43 @@ import * as crypto from 'crypto';
 const STORAGE_DIR = process.env.SEED_STORAGE_DIR || '/tmp/ore-seeds';
 const ENCRYPTION_KEY = process.env.SEED_ENCRYPTION_KEY; // Optional encryption
 
+/**
+ * Validate that the encryption key is exactly 32 bytes (64 hex characters) for AES-256
+ */
+function validateEncryptionKey(): void {
+  if (!ENCRYPTION_KEY) return; // Encryption is optional
+
+  const keyBuffer = Buffer.from(ENCRYPTION_KEY, 'hex');
+  if (keyBuffer.length !== 32) {
+    throw new Error(
+      `SEED_ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters). Got ${keyBuffer.length} bytes.`
+    );
+  }
+}
+
+// Call on module load
+validateEncryptionKey();
+
 // Ensure storage directory exists
 if (!fs.existsSync(STORAGE_DIR)) {
   fs.mkdirSync(STORAGE_DIR, { recursive: true, mode: 0o700 });
+}
+
+/**
+ * Validate that varAddress is a valid base58 address with no path traversal sequences
+ * @param varAddress - The Var account address to validate
+ * @returns true if valid, false otherwise
+ */
+function validateVarAddress(varAddress: string): boolean {
+  // Base58 addresses should only contain valid characters (no slashes, dots, etc)
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  if (!base58Regex.test(varAddress)) return false;
+
+  // Double-check no path traversal sequences
+  if (varAddress.includes('..') || varAddress.includes('/') || varAddress.includes('\\')) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -16,6 +50,9 @@ if (!fs.existsSync(STORAGE_DIR)) {
  * @param seed - The 32-byte seed buffer
  */
 export function storeSeed(varAddress: string, seed: Buffer): void {
+  if (!validateVarAddress(varAddress)) {
+    throw new Error('Invalid varAddress: must be a valid base58 string with no path traversal sequences');
+  }
   const filePath = path.join(STORAGE_DIR, `${varAddress}.seed`);
   const data = ENCRYPTION_KEY ? encrypt(seed) : seed;
   fs.writeFileSync(filePath, data, { mode: 0o600 });
@@ -27,6 +64,9 @@ export function storeSeed(varAddress: string, seed: Buffer): void {
  * @returns The 32-byte seed buffer, or null if not found
  */
 export function retrieveSeed(varAddress: string): Buffer | null {
+  if (!validateVarAddress(varAddress)) {
+    throw new Error('Invalid varAddress: must be a valid base58 string with no path traversal sequences');
+  }
   const filePath = path.join(STORAGE_DIR, `${varAddress}.seed`);
   if (!fs.existsSync(filePath)) return null;
   const data = fs.readFileSync(filePath);
@@ -38,6 +78,9 @@ export function retrieveSeed(varAddress: string): Buffer | null {
  * @param varAddress - The Var account address (base58 string)
  */
 export function deleteSeed(varAddress: string): void {
+  if (!validateVarAddress(varAddress)) {
+    throw new Error('Invalid varAddress: must be a valid base58 string with no path traversal sequences');
+  }
   const filePath = path.join(STORAGE_DIR, `${varAddress}.seed`);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 }

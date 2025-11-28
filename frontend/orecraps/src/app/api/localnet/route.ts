@@ -3,25 +3,11 @@ import { spawnSync } from "child_process";
 import path from "path";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
+import { getKeypairPath } from "@/lib/cliConfig";
 
 const debug = createDebugger("Localnet");
 
 const SCRIPT_PATH = path.resolve(process.cwd(), "../../scripts/localnet-setup.sh");
-
-/**
- * Get admin keypair path from environment
- * Throws error if not set to prevent insecure defaults
- */
-function getKeypairPath(): string {
-  const keypairPath = process.env.ADMIN_KEYPAIR_PATH;
-  if (!keypairPath) {
-    throw new Error(
-      "ADMIN_KEYPAIR_PATH environment variable is required. " +
-      "Set it to the path of your Solana keypair file for localnet operations."
-    );
-  }
-  return keypairPath;
-}
 
 // Check if localnet validator is running
 async function isValidatorRunning(): Promise<boolean> {
