@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { ORE_PROGRAM_ID } from "@/lib/constants";
 import { LOCALNET_RPC, DEVNET_RPC, getRpcEndpoint } from "@/lib/cliConfig";
-import crypto from "crypto";
+import { calculateRng, calculateWinningSquareFromHash, squareToDice } from "@/lib/dice";
 
 const debug = createDebugger("GetRoundResult");
 
@@ -29,37 +29,6 @@ function roundPDA(roundId: bigint): [PublicKey, number] {
 // Read u64 from buffer
 function readU64(data: Buffer, offset: number): bigint {
   return data.readBigUInt64LE(offset);
-}
-
-// Calculate RNG from slot_hash (XOR 4 u64 segments)
-function calculateRng(slotHash: Buffer): bigint | null {
-  if (slotHash.every((b) => b === 0) || slotHash.every((b) => b === 255)) {
-    return null;
-  }
-  const r1 = slotHash.readBigUInt64LE(0);
-  const r2 = slotHash.readBigUInt64LE(8);
-  const r3 = slotHash.readBigUInt64LE(16);
-  const r4 = slotHash.readBigUInt64LE(24);
-  return r1 ^ r2 ^ r3 ^ r4;
-}
-
-// Calculate winning square using keccak hash (matches on-chain)
-function calculateWinningSquare(slotHash: Buffer): number {
-  // Use crypto for keccak256 - same as on-chain
-  const hash = crypto.createHash("sha3-256").update(slotHash).digest();
-  const sample = hash.readBigUInt64LE(0);
-
-  const boardSize = 36n;
-  const maxValid = (BigInt("0xFFFFFFFFFFFFFFFF") / boardSize) * boardSize;
-
-  if (sample < maxValid) {
-    return Number(sample % boardSize);
-  } else {
-    // Retry with hash of hash
-    const hash2 = crypto.createHash("sha3-256").update(hash).digest();
-    const sample2 = hash2.readBigUInt64LE(0);
-    return Number(sample2 % boardSize);
-  }
 }
 
 // Round account layout offsets
@@ -122,11 +91,10 @@ export async function GET(request: Request) {
     }
 
     // Calculate winning square
-    const winningSquare = calculateWinningSquare(slotHash);
+    const winningSquare = calculateWinningSquareFromHash(slotHash);
 
     // Calculate dice from winning square
-    const die1 = Math.floor(winningSquare / 6) + 1;
-    const die2 = (winningSquare % 6) + 1;
+    const [die1, die2] = squareToDice(winningSquare);
     const diceSum = die1 + die2;
 
     debug(`Round ${roundId}: winning_square=${winningSquare}, dice=${die1}+${die2}=${diceSum}`);

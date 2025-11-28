@@ -160,16 +160,28 @@ export function useCraps() {
 
     fetchCraps(true);
 
-    const intervalId = setInterval(() => {
-      if (isMounted) {
-        fetchCraps();
-      }
-    }, POLL_INTERVAL);
+    // Use adaptive setTimeout pattern instead of setInterval
+    let timeoutId: NodeJS.Timeout;
+
+    const schedulePoll = () => {
+      // Don't schedule if unmounted
+      if (!isMounted) return;
+
+      timeoutId = setTimeout(() => {
+        if (isMounted) {
+          fetchCraps().then(() => {
+            schedulePoll();
+          });
+        }
+      }, POLL_INTERVAL);
+    };
+
+    schedulePoll();
 
     return () => {
       debug(`Stopping polling for network: ${network}`);
       isMounted = false;
-      clearInterval(intervalId);
+      clearTimeout(timeoutId);
       // FIXED: Cancel any in-flight requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();

@@ -12,6 +12,7 @@ import {
   getSumBgColor,
   getSumColor,
   getIndicesForSum,
+  diceToSquare,
 } from "@/lib/dice";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -194,7 +195,7 @@ export const MiningBoard = React.memo(function MiningBoard({
                 </div>
 
                 {[1, 2, 3, 4, 5, 6].map((die2) => {
-                  const index = (die1 - 1) * 6 + (die2 - 1);
+                  const index = diceToSquare(die1, die2);
                   const combo = ALL_DICE_COMBINATIONS[index];
                   const square = boardSquares[index];
                   const isSelected = selectedSquares[index];

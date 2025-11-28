@@ -9,6 +9,7 @@ import {
   sendAndConfirmTransaction,
   AccountMeta,
 } from "@solana/web3.js";
+import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID } from "@/lib/constants";
@@ -77,9 +78,9 @@ function calculateDiceFromSlotHash(slotHash: Buffer): { die1: number; die2: numb
     winningSquare = Number(sample2 % boardSize);
   }
 
-  // Convert square to dice (square = (die1-1)*6 + (die2-1))
-  const die1 = Math.floor(winningSquare / 6) + 1;
-  const die2 = (winningSquare % 6) + 1;
+  // Convert square to dice
+  const { squareToDice } = require('@/lib/dice');
+  const [die1, die2] = squareToDice(winningSquare);
   const sum = die1 + die2;
 
   return { die1, die2, sum, winningSquare };
@@ -148,7 +149,8 @@ async function setupMockVarAccount(
     debug(`  value: ${value.toString("hex").slice(0, 16)}...`);
 
     // Use solana CLI to write the account data (requires admin privileges on localnet)
-    const dataFile = `/tmp/var-data-${Date.now()}.bin`;
+    const randomSuffix = crypto.randomBytes(16).toString('hex');
+    const dataFile = `/tmp/var-data-${randomSuffix}.bin`;
     fs.writeFileSync(dataFile, data);
 
     try {
@@ -290,17 +292,7 @@ export async function POST(request: Request) {
       note: "Mock entropy data was written to Var account. Full reset instruction not yet implemented.",
     });
   } catch (error) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('API Error:', error); // Always log internally
-
     debug("Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? String(error) : 'Internal server error',
-        ...(isDevelopment && error instanceof Error && { stack: error.stack })
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

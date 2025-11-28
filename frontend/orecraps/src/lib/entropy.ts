@@ -386,8 +386,8 @@ export function calculateDiceFromValue(value: Buffer): {
   }
 
   // Convert square to dice
-  const die1 = Math.floor(winningSquare / 6) + 1;
-  const die2 = (winningSquare % 6) + 1;
+  const { squareToDice } = require('./dice');
+  const [die1, die2] = squareToDice(winningSquare);
   const sum = die1 + die2;
 
   return { die1, die2, sum, winningSquare };

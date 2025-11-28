@@ -7,6 +7,7 @@ import { BOARD_SIZE } from "@/lib/program";
 import { withFallback, getConnection, getCurrentEndpoint } from "@/lib/rpcManager";
 import { useNetworkStore } from "@/store/networkStore";
 import { createDebugger } from "@/lib/debug";
+import { calculateRng, calculateWinningSquareFromRng } from "@/lib/dice";
 
 const debug = createDebugger("useBoard");
 
@@ -72,26 +73,6 @@ const ROUND_TOP_MINER_OFFSET = ROUND_RENT_PAYER_OFFSET + 32; // 672
 const ROUND_TOTAL_DEPLOYED_OFFSET = ROUND_TOP_MINER_OFFSET + 32 + 8; // 712
 const ROUND_TOTAL_WINNINGS_OFFSET = ROUND_TOTAL_DEPLOYED_OFFSET + 8 + 8; // After total_deployed (8) + total_vaulted (8)
 
-// Calculate RNG from slot_hash (same as Rust: XOR 4 u64 segments)
-function calculateRng(slotHash: Uint8Array): bigint | null {
-  // Check if slot_hash is all zeros or all max (not set)
-  if (slotHash.every((b) => b === 0) || slotHash.every((b) => b === 255)) {
-    return null;
-  }
-
-  const view = new DataView(slotHash.buffer, slotHash.byteOffset, 32);
-  const r1 = view.getBigUint64(0, true);
-  const r2 = view.getBigUint64(8, true);
-  const r3 = view.getBigUint64(16, true);
-  const r4 = view.getBigUint64(24, true);
-
-  return r1 ^ r2 ^ r3 ^ r4;
-}
-
-// Calculate winning square from RNG
-function calculateWinningSquare(rng: bigint): number {
-  return Number(rng % BigInt(BOARD_SIZE));
-}
 
 function readU64(data: Uint8Array, offset: number): bigint {
   // Read 8 bytes as little-endian u64
@@ -235,7 +216,7 @@ export function useBoard() {
           let winningSquare: number | null = null;
           const rng = calculateRng(slotHash);
           if (rng !== null) {
-            winningSquare = calculateWinningSquare(rng);
+            winningSquare = calculateWinningSquareFromRng(rng);
           }
 
           setRound({

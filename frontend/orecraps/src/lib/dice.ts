@@ -35,6 +35,61 @@ export function isHardway(die1: number, die2: number): boolean {
   return die1 === die2;
 }
 
+/**
+ * Calculate RNG from slot_hash (XOR 4 u64 segments)
+ * Returns null if slot_hash is not set (all zeros or all 255s)
+ */
+export function calculateRng(slotHash: Uint8Array | Buffer): bigint | null {
+  // Check if slot_hash is all zeros or all max (not set)
+  if (slotHash.every((b) => b === 0) || slotHash.every((b) => b === 255)) {
+    return null;
+  }
+
+  // Handle both Uint8Array and Buffer
+  const view = slotHash instanceof Buffer
+    ? new DataView(slotHash.buffer, slotHash.byteOffset, 32)
+    : new DataView(slotHash.buffer, slotHash.byteOffset, 32);
+
+  const r1 = view.getBigUint64(0, true);
+  const r2 = view.getBigUint64(8, true);
+  const r3 = view.getBigUint64(16, true);
+  const r4 = view.getBigUint64(24, true);
+
+  return r1 ^ r2 ^ r3 ^ r4;
+}
+
+/**
+ * Calculate winning square from slot_hash using keccak256 hash
+ * This matches the on-chain implementation
+ */
+export function calculateWinningSquareFromHash(slotHash: Buffer): number {
+  // This version uses crypto.createHash for server-side
+  // Import is handled at runtime
+  const crypto = require('crypto');
+  const hash = crypto.createHash("sha3-256").update(slotHash).digest();
+  const sample = hash.readBigUInt64LE(0);
+
+  const boardSize = 36n;
+  const maxValid = (BigInt("0xFFFFFFFFFFFFFFFF") / boardSize) * boardSize;
+
+  if (sample < maxValid) {
+    return Number(sample % boardSize);
+  } else {
+    // Retry with hash of hash
+    const hash2 = crypto.createHash("sha3-256").update(hash).digest();
+    const sample2 = hash2.readBigUInt64LE(0);
+    return Number(sample2 % boardSize);
+  }
+}
+
+/**
+ * Calculate winning square from RNG value
+ * This is used when you already have the RNG calculated
+ */
+export function calculateWinningSquareFromRng(rng: bigint): number {
+  return Number(rng % BigInt(BOARD_SIZE));
+}
+
 export interface DiceMultiplier {
   sum: number;
   probability: number;

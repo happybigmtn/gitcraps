@@ -3,6 +3,7 @@ import { spawnSync } from "child_process";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { CLI_PATH, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
+import { diceToSquare } from "@/lib/dice";
 
 const debug = createDebugger("StartRound");
 
@@ -16,8 +17,7 @@ function rollDice(): { die1: number; die2: number; sum: number; square: number }
   const die1 = (randomBytes[0] % 6) + 1;
   const die2 = (randomBytes[1] % 6) + 1;
   const sum = die1 + die2;
-  // Square index: (die1 - 1) * 6 + (die2 - 1)
-  const square = (die1 - 1) * 6 + (die2 - 1);
+  const square = diceToSquare(die1, die2);
   return { die1, die2, sum, square };
 }
 
@@ -25,6 +25,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const duration = body.duration || 300; // Default 300 slots (~2 minutes)
+
+    // Validate duration bounds (1 second to 1 hour)
+    if (typeof duration !== 'number' || duration < 1 || duration > 3600) {
+      return NextResponse.json(
+        { success: false, error: "Duration must be between 1 and 3600 seconds" },
+        { status: 400 }
+      );
+    }
+
     const network = body.network || "devnet";
     // Simulated mode: default to true for localnet, can be overridden
     const simulated = body.simulated !== undefined ? body.simulated : (network === "localnet");

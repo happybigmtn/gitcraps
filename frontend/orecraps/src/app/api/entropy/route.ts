@@ -19,6 +19,7 @@ import {
   sendAndConfirmTransaction,
   SYSVAR_SLOT_HASHES_PUBKEY,
 } from "@solana/web3.js";
+import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
 import { apiLimiter } from "@/lib/rateLimit";
@@ -209,8 +210,8 @@ function calculateDiceFromValue(value: Buffer): {
     winningSquare = Number(sample2 % boardSize);
   }
 
-  const die1 = Math.floor(winningSquare / 6) + 1;
-  const die2 = (winningSquare % 6) + 1;
+  const { squareToDice } = require('@/lib/dice');
+  const [die1, die2] = squareToDice(winningSquare);
   const sum = die1 + die2;
 
   return { die1, die2, sum, winningSquare };
@@ -684,17 +685,7 @@ export async function POST(request: Request) {
       varData,
     });
   } catch (error) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('API Error:', error); // Always log internally
-
     debug("Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? String(error) : 'Internal server error',
-        ...(isDevelopment && error instanceof Error && { stack: error.stack })
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

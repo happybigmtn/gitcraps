@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
+import { diceToSquare } from "@/lib/dice";
 
 const debug = createDebugger("SimulateRoll");
-
-// 6x6 dice grid layout (die1 rows, die2 columns)
-// Square index = (die1 - 1) * 6 + (die2 - 1)
-function diceToSquare(die1: number, die2: number): number {
-  return (die1 - 1) * 6 + (die2 - 1);
-}
-
-function squareToDice(square: number): [number, number] {
-  const die1 = Math.floor(square / 6) + 1;
-  const die2 = (square % 6) + 1;
-  return [die1, die2];
-}
 
 /**
  * Simulate a dice roll for localnet testing.
@@ -166,17 +156,7 @@ export async function POST(request: Request) {
       message: `Simulated roll: ${die1} + ${die2} = ${diceSum}`,
     });
   } catch (error) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('API Error:', error); // Always log internally
-
     debug("Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? String(error) : 'Internal server error',
-        ...(isDevelopment && error instanceof Error && { stack: error.stack })
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
