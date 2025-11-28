@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, memo } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,8 @@ import {
   CrapsBetType,
   POINT_NUMBERS,
   HARDWAY_NUMBERS,
-  createPlaceCrapsBetInstruction,
-  createClaimCrapsWinningsInstruction,
 } from "@/lib/program";
+import { createTransactionService } from "@/services/transactionService";
 import { toast } from "sonner";
 import {
   Dices,
@@ -37,8 +36,8 @@ import {
   Info,
 } from "lucide-react";
 
-export function CrapsBettingPanel() {
-  const { publicKey, connected, sendTransaction } = useWallet();
+function CrapsBettingPanelComponent() {
+  const wallet = useWallet();
   const { connection } = useConnection();
   const { game, position, isComeOut, currentPoint, pendingWinnings, refetch } =
     useCraps();
@@ -65,7 +64,7 @@ export function CrapsBettingPanel() {
 
   // Submit all pending bets
   const handleSubmitBets = useCallback(async () => {
-    if (!publicKey || !connected) {
+    if (!wallet.publicKey || !wallet.connected) {
       toast.error("Please connect your wallet first");
       return;
     }
@@ -79,68 +78,43 @@ export function CrapsBettingPanel() {
       setIsSubmitting(true);
       toast.info("Preparing transaction...");
 
-      const transaction = new Transaction();
-
-      // Add all pending bets as instructions
-      for (const bet of pendingBets) {
-        const amountLamports = BigInt(Math.floor(bet.amount * LAMPORTS_PER_SOL));
-        const ix = createPlaceCrapsBetInstruction(
-          publicKey!,
-          bet.betType,
-          bet.point,
-          amountLamports
-        );
-        transaction.add(ix);
-      }
-
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = publicKey!;
+      // Use TransactionService to place bets
+      const txService = createTransactionService();
+      const bets = pendingBets.map((bet) => ({
+        betType: bet.betType,
+        point: bet.point,
+        amount: bet.amount,
+      }));
 
       toast.info("Please confirm in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+      const result = await txService.placeCrapsBets(wallet, connection, bets);
 
-      // Validate signature
-      if (!signature || typeof signature !== 'string' || signature.length === 0) {
-        throw new Error('Invalid transaction signature received');
+      if (!result.success) {
+        throw new Error(result.error || "Transaction failed");
       }
 
-      toast.info("Confirming transaction...");
-      await connection.confirmTransaction({
-        signature,
-        blockhash,
-        lastValidBlockHeight,
-      });
-
-      toast.success(`Placed ${pendingBets.length} bet(s) successfully!`);
+      toast.success(`Placed ${result.betsPlaced} bet(s) successfully!`);
       clearPendingBets();
       refetch();
     } catch (error) {
       console.error("Submit bets error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      if (errorMessage.includes("User rejected")) {
-        toast.error("Transaction cancelled");
-      } else {
-        toast.error(`Failed to place bets: ${errorMessage}`);
-      }
+      toast.error(`Failed to place bets: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
   }, [
-    publicKey,
-    connected,
+    wallet,
     pendingBets,
     connection,
-    sendTransaction,
     clearPendingBets,
     refetch,
   ]);
 
   // Claim winnings
   const handleClaimWinnings = useCallback(async () => {
-    if (!publicKey || !connected) {
+    if (!wallet.publicKey || !wallet.connected) {
       toast.error("Please connect your wallet first");
       return;
     }
@@ -154,28 +128,15 @@ export function CrapsBettingPanel() {
       setIsClaiming(true);
       toast.info("Preparing claim...");
 
-      const ix = createClaimCrapsWinningsInstruction(publicKey);
-      const transaction = new Transaction().add(ix);
-
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = publicKey;
+      // Use TransactionService to claim winnings
+      const txService = createTransactionService();
 
       toast.info("Please confirm in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+      const result = await txService.claimCrapsWinnings(wallet, connection);
 
-      // Validate signature
-      if (!signature || typeof signature !== 'string' || signature.length === 0) {
-        throw new Error('Invalid transaction signature received');
+      if (!result.success) {
+        throw new Error(result.error || "Transaction failed");
       }
-
-      toast.info("Confirming transaction...");
-      await connection.confirmTransaction({
-        signature,
-        blockhash,
-        lastValidBlockHeight,
-      });
 
       const winAmount = Number(pendingWinnings) / LAMPORTS_PER_SOL;
       toast.success(`Claimed ${winAmount.toFixed(4)} SOL!`);
@@ -184,15 +145,11 @@ export function CrapsBettingPanel() {
       console.error("Claim error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      if (errorMessage.includes("User rejected")) {
-        toast.error("Transaction cancelled");
-      } else {
-        toast.error(`Failed to claim: ${errorMessage}`);
-      }
+      toast.error(`Failed to claim: ${errorMessage}`);
     } finally {
       setIsClaiming(false);
     }
-  }, [publicKey, connected, pendingWinnings, connection, sendTransaction, refetch]);
+  }, [wallet, pendingWinnings, connection, refetch]);
 
   // Check if a bet type can be placed
   const canPlaceBet = useCallback(
@@ -611,9 +568,9 @@ export function CrapsBettingPanel() {
           className="w-full"
           size="lg"
           onClick={handleSubmitBets}
-          disabled={!connected || isSubmitting || pendingBets.length === 0}
+          disabled={!wallet.connected || isSubmitting || pendingBets.length === 0}
         >
-          {!connected ? (
+          {!wallet.connected ? (
             "Connect Wallet"
           ) : isSubmitting ? (
             <>
@@ -647,7 +604,7 @@ export function CrapsBettingPanel() {
                 className="w-full mt-2"
                 variant="outline"
                 onClick={handleClaimWinnings}
-                disabled={!connected || isClaiming}
+                disabled={!wallet.connected || isClaiming}
               >
                 {isClaiming ? (
                   <>
@@ -711,3 +668,5 @@ export function CrapsBettingPanel() {
     </Card>
   );
 }
+
+export const CrapsBettingPanel = memo(CrapsBettingPanelComponent);

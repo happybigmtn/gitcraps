@@ -10,8 +10,9 @@ import {
   CrapsGame,
   CrapsPosition,
 } from "@/lib/program";
-import { withFallback, getCurrentEndpoint } from "@/lib/rpcManager";
+import { withFallback, getCurrentEndpoint } from "@/lib/network";
 import { useNetworkStore } from "@/store/networkStore";
+import { useCrapsStore } from "@/store/crapsStore";
 import { createDebugger } from "@/lib/debug";
 
 const debug = createDebugger("useCraps");
@@ -32,9 +33,18 @@ export interface CrapsState {
 
 export function useCraps() {
   const { publicKey } = useWallet();
-  const [game, setGame] = useState<CrapsGame | null>(null);
-  const [position, setPosition] = useState<CrapsPosition | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // Use store as single source of truth
+  const {
+    crapsGame,
+    crapsPosition,
+    isLoading,
+    setCrapsGame,
+    setCrapsPosition,
+    setIsLoading
+  } = useCrapsStore();
+
+  // Only keep error in local state as it's not in the store
   const [error, setError] = useState<string | null>(null);
 
   const { network } = useNetworkStore();
@@ -68,7 +78,7 @@ export function useCraps() {
 
       try {
         if (!initialFetchDoneRef.current) {
-          setLoading(true);
+          setIsLoading(true);
         }
         setError(null);
 
@@ -100,18 +110,18 @@ export function useCraps() {
 
         if (gameAccount) {
           const parsedGame = parseCrapsGame(Buffer.from(gameAccount.data));
-          setGame(parsedGame);
+          setCrapsGame(parsedGame);
         } else {
-          setGame(null);
+          setCrapsGame(null);
         }
 
         if (positionAccount) {
           const parsedPosition = parseCrapsPosition(
             Buffer.from(positionAccount.data)
           );
-          setPosition(parsedPosition);
+          setCrapsPosition(parsedPosition);
         } else {
-          setPosition(null);
+          setCrapsPosition(null);
         }
 
         backoffRef.current = POLL_INTERVAL;
@@ -141,12 +151,12 @@ export function useCraps() {
           setError(errorMessage);
         }
       } finally {
-        setLoading(false);
+        setIsLoading(false);
         fetchingRef.current = false;
         initialFetchDoneRef.current = true;
       }
     },
-    [publicKey, POLL_INTERVAL]
+    [publicKey, POLL_INTERVAL, setCrapsGame, setCrapsPosition, setIsLoading]
   );
 
   useEffect(() => {
@@ -194,17 +204,18 @@ export function useCraps() {
     fetchCraps(true);
   }, [publicKey, fetchCraps]);
 
-  // Computed values (all from on-chain state only)
-  const isComeOut = game?.isComeOut ?? true;
-  const currentPoint = game?.point ?? 0;
-  const epochId = game?.epochId ?? 0n;
-  const houseBankroll = game?.houseBankroll ?? 0n;
-  const pendingWinnings = position?.pendingWinnings ?? 0n;
+  // Computed values (all from on-chain state only, derived from store)
+  const isComeOut = crapsGame?.isComeOut ?? true;
+  const currentPoint = crapsGame?.point ?? 0;
+  const epochId = crapsGame?.epochId ?? 0n;
+  const houseBankroll = crapsGame?.houseBankroll ?? 0n;
+  const pendingWinnings = crapsPosition?.pendingWinnings ?? 0n;
 
   return {
-    game,
-    position,
-    loading,
+    // Return data from store (single source of truth)
+    game: crapsGame,
+    position: crapsPosition,
+    loading: isLoading,
     error,
     refetch: () => fetchCraps(true),
     // Computed values (on-chain only)

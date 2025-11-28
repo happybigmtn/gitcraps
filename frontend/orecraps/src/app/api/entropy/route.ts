@@ -83,9 +83,37 @@ function varPDA(authority: PublicKey, id: bigint): [PublicKey, number] {
 }
 
 /**
+ * Var account info structure from Solana's getAccountInfo
+ */
+interface VarAccountInfo {
+  data: Buffer;
+  executable: boolean;
+  lamports: number;
+  owner: PublicKey;
+  rentEpoch?: number;
+}
+
+/**
+ * Parsed Var account data structure
+ */
+interface ParsedVarData {
+  authority: PublicKey;
+  id: bigint;
+  provider: PublicKey;
+  commit: Buffer;
+  seed: Buffer;
+  slotHash: Buffer;
+  value: Buffer;
+  samples: bigint;
+  isAuto: boolean;
+  startAt: bigint;
+  endAt: bigint;
+}
+
+/**
  * Parse Var account data
  */
-function parseVarAccount(data: Uint8Array) {
+function parseVarAccount(data: Uint8Array): ParsedVarData {
   return {
     authority: new PublicKey(data.slice(VAR_OFFSETS.authority, VAR_OFFSETS.authority + 32)),
     id: readU64(data, VAR_OFFSETS.id),
@@ -249,8 +277,8 @@ interface HandlerParams {
   configAddress: PublicKey;
   varAddress: PublicKey;
   varId: bigint;
-  varAccount: any;
-  varData: any;
+  varAccount: VarAccountInfo | null;
+  varData: ParsedVarData | null;
 }
 
 /**

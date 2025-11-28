@@ -12,6 +12,10 @@ const LOCALNET_RNG_MINT = "RaBMafFSe53m9VU7CFf7ZWv7cQwUYFwBt926YZKLAVC";
 // Amount to airdrop: 1000 RNG tokens (with 9 decimals)
 const AIRDROP_AMOUNT = "1000";
 
+// SECURITY: Rate limiting to prevent faucet abuse
+const walletRequestTimes = new Map<string, number>();
+const FAUCET_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
 // Validate Solana address using PublicKey constructor
 function isValidSolanaAddress(address: string): boolean {
   try {
@@ -60,6 +64,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: "Faucet only available on localnet" },
         { status: 400 }
+      );
+    }
+
+    // SECURITY: Rate limiting per wallet address
+    const lastRequest = walletRequestTimes.get(wallet);
+    const now = Date.now();
+    if (lastRequest && (now - lastRequest) < FAUCET_COOLDOWN_MS) {
+      const minutesRemaining = Math.ceil((FAUCET_COOLDOWN_MS - (now - lastRequest)) / 60000);
+      return NextResponse.json(
+        { success: false, error: `Rate limited. Try again in ${minutesRemaining} minutes.` },
+        { status: 429 }
       );
     }
 
@@ -132,6 +147,9 @@ export async function POST(request: Request) {
     // Parse signature from output
     const sigMatch = stdout.match(/Signature: (\w+)/i);
     const signature = sigMatch ? sigMatch[1] : null;
+
+    // SECURITY: Record successful request time for rate limiting
+    walletRequestTimes.set(wallet, now);
 
     return NextResponse.json({
       success: true,

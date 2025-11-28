@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { PublicKey } from "@solana/web3.js";
-import { setNetworkMode } from "@/lib/rpcManager";
+import { setNetworkMode } from "@/lib/network";
 import { createDebugger } from "@/lib/debug";
 
 const debug = createDebugger("NetworkStore");

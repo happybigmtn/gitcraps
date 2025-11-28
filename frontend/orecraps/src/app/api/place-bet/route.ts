@@ -40,6 +40,44 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate each bet in the array
+    for (const bet of bets) {
+      // Validate amount is a positive number
+      if (typeof bet.amount !== 'number' || bet.amount <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid bet amount: must be positive' },
+          { status: 400 }
+        );
+      }
+
+      // Validate amount doesn't exceed maximum
+      if (bet.amount > 100) {
+        return NextResponse.json(
+          { success: false, error: 'Bet amount exceeds maximum (100 SOL)' },
+          { status: 400 }
+        );
+      }
+
+      // Validate betType is a valid number in range
+      if (typeof bet.betType !== 'number' || bet.betType < 0 || bet.betType > 15) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid bet type' },
+          { status: 400 }
+        );
+      }
+
+      // Validate point if provided
+      if (bet.point !== undefined && bet.point !== null) {
+        const validPoints = [4, 5, 6, 8, 9, 10];
+        if (!validPoints.includes(bet.point)) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid point value: must be 4, 5, 6, 8, 9, or 10' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const connection = new Connection(LOCALNET_RPC, "confirmed");
     const gameService = new CrapsGameService(connection);
 

@@ -184,6 +184,21 @@ export const useCrapsStore = create<CrapsState>()(
 );
 
 // ============================================================================
+// BASIC STATE SELECTORS
+// ============================================================================
+// Use these selectors to subscribe to specific state slices and prevent
+// unnecessary re-renders from over-subscription
+
+// Core state selectors
+export const useCrapsGame = () => useCrapsStore((state) => state.crapsGame);
+export const useCrapsPosition = () => useCrapsStore((state) => state.crapsPosition);
+export const usePendingBets = () => useCrapsStore((state) => state.pendingBets);
+export const useBetAmount = () => useCrapsStore((state) => state.betAmount);
+export const useSelectedBetType = () => useCrapsStore((state) => state.selectedBetType);
+export const useSelectedPoint = () => useCrapsStore((state) => state.selectedPoint);
+export const useIsLoading = () => useCrapsStore((state) => state.isLoading);
+
+// ============================================================================
 // DERIVED SELECTORS
 // ============================================================================
 

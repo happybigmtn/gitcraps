@@ -28,6 +28,9 @@ export type { NetworkMode } from "@/lib/network";
  * @deprecated Use setNetworkMode from @/lib/network instead
  */
 export function setNetworkMode(network: "localnet" | "devnet"): void {
+  console.warn(
+    "DEPRECATED: rpcManager.setNetworkMode() is deprecated. Use setNetworkMode from @/lib/network instead."
+  );
   setNetworkModeImpl(network);
 }
 
@@ -37,6 +40,9 @@ export function setNetworkMode(network: "localnet" | "devnet"): void {
  * @deprecated Use getNetworkMode from @/lib/network instead
  */
 export function getNetworkMode(): "localnet" | "devnet" {
+  console.warn(
+    "DEPRECATED: rpcManager.getNetworkMode() is deprecated. Use getNetworkMode from @/lib/network instead."
+  );
   return getNetworkModeImpl();
 }
 
@@ -47,6 +53,9 @@ export function getNetworkMode(): "localnet" | "devnet" {
  * @deprecated Use getConnection from @/lib/network instead
  */
 export function getConnection(): Connection {
+  console.warn(
+    "DEPRECATED: rpcManager.getConnection() is deprecated. Use getConnection from @/lib/network instead."
+  );
   return getNetworkConnection();
 }
 
@@ -56,6 +65,9 @@ export function getConnection(): Connection {
  * @deprecated Use reportSuccess from @/lib/network instead
  */
 export function reportSuccess(): void {
+  console.warn(
+    "DEPRECATED: rpcManager.reportSuccess() is deprecated. Use reportSuccess from @/lib/network instead."
+  );
   reportSuccessImpl();
 }
 
@@ -65,6 +77,9 @@ export function reportSuccess(): void {
  * @deprecated Use reportFailure from @/lib/network instead
  */
 export async function reportFailure(error: Error): Promise<void> {
+  console.warn(
+    "DEPRECATED: rpcManager.reportFailure() is deprecated. Use reportFailure from @/lib/network instead."
+  );
   await reportFailureImpl(error);
 }
 
@@ -74,6 +89,9 @@ export async function reportFailure(error: Error): Promise<void> {
  * @deprecated Use getCurrentEndpoint from @/lib/network instead
  */
 export function getCurrentEndpoint(): string {
+  console.warn(
+    "DEPRECATED: rpcManager.getCurrentEndpoint() is deprecated. Use getCurrentEndpoint from @/lib/network instead."
+  );
   return getCurrentEndpointImpl();
 }
 
@@ -86,5 +104,8 @@ export async function withFallback<T>(
   operation: (connection: Connection) => Promise<T>,
   maxRetries = 3
 ): Promise<T> {
+  console.warn(
+    "DEPRECATED: rpcManager.withFallback() is deprecated. Use withFallback from @/lib/network instead."
+  );
   return withFallbackImpl(operation, maxRetries);
 }

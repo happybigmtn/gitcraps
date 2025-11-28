@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
-const STORAGE_DIR = process.env.SEED_STORAGE_DIR || '/tmp/ore-seeds';
+const STORAGE_DIR = process.env.SEED_STORAGE_DIR || path.join(process.env.HOME || '/root', '.ore-seeds');
 const ENCRYPTION_KEY = process.env.SEED_ENCRYPTION_KEY; // Optional encryption
 
 /**

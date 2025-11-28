@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { boardPDA, roundPDA } from "@/lib/solana";
 import { BOARD_SIZE } from "@/lib/program";
-import { withFallback, getCurrentEndpoint } from "@/lib/rpcManager";
+import { withFallback, getCurrentEndpoint } from "@/lib/network";
 import { useNetworkStore } from "@/store/networkStore";
 import { createDebugger } from "@/lib/debug";
 import { calculateRng, calculateWinningSquareFromRng } from "@/lib/dice";

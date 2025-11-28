@@ -40,7 +40,7 @@ export function RoundTimer({
       const elapsedSinceUpdate = (Date.now() - lastSlotUpdateRef.current) / 1000;
       const estimatedRemaining = Math.max(0, baseTimeRef.current - elapsedSinceUpdate);
       setTimeRemaining(estimatedRemaining);
-    }, 100);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
