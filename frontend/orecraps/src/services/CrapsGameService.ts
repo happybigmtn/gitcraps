@@ -1,5 +1,5 @@
-import { Connection, PublicKey, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { TransactionService } from './TransactionService';
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { TransactionService } from './LegacyTransactionService';
 import {
   createPlaceCrapsBetInstruction,
   crapsGamePDA,

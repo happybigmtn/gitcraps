@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { apiLimiter } from "@/lib/rateLimit";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     // Rate limiting check
     const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
-    const rateLimitResult = apiLimiter.check(10, ip); // 10 requests per minute per IP
+    const rateLimitResult = apiLimiter.check(100, ip); // 100 requests per minute per IP (increased for testing)
 
     if (!rateLimitResult.success) {
       return NextResponse.json(

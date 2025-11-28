@@ -3,7 +3,7 @@ import { spawnSync } from "child_process";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { validateAdminToken } from "@/lib/adminAuth";
-import { CLI_PATH, LOCALNET_RPC, DEVNET_RPC, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
+import { CLI_PATH, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
 
 const debug = createDebugger("SettleRound");
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
+    await request.json().catch(() => ({}));
 
     // Use server-side network configuration instead of trusting client
     const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';

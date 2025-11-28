@@ -8,17 +8,17 @@ import { Clock, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface RoundTimerProps {
-  roundId?: number;
-  startSlot?: number;
-  endSlot?: number;
-  currentSlot?: number;
+  roundId?: bigint;
+  startSlot?: bigint;
+  endSlot?: bigint;
+  currentSlot?: bigint;
 }
 
 export function RoundTimer({
-  roundId = 0,
-  startSlot = 0,
-  endSlot = 0,
-  currentSlot = 0,
+  roundId = 0n,
+  startSlot = 0n,
+  endSlot = 0n,
+  currentSlot = 0n,
 }: RoundTimerProps) {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const lastSlotUpdateRef = useRef<number>(Date.now());
@@ -26,7 +26,7 @@ export function RoundTimer({
 
   useEffect(() => {
     if (endSlot && currentSlot) {
-      const slotsRemaining = Math.max(0, endSlot - currentSlot);
+      const slotsRemaining = Number(endSlot > currentSlot ? endSlot - currentSlot : 0n);
       const newTime = slotsToSeconds(slotsRemaining);
       baseTimeRef.current = newTime;
       lastSlotUpdateRef.current = Date.now();
@@ -48,8 +48,8 @@ export function RoundTimer({
   const isUrgent = timeRemaining > 0 && timeRemaining <= 10;
   const isCritical = timeRemaining > 0 && timeRemaining <= 5;
 
-  const totalSlots = endSlot - startSlot;
-  const elapsedSlots = currentSlot - startSlot;
+  const totalSlots = Number(endSlot - startSlot);
+  const elapsedSlots = Number(currentSlot - startSlot);
   const progress = totalSlots > 0 ? Math.min(100, (elapsedSlots / totalSlots) * 100) : 0;
 
   return (
@@ -141,7 +141,7 @@ export function RoundTimer({
         {isActive && (
           <div className="px-4 py-1.5 bg-secondary/20 flex items-center justify-between text-[9px] font-mono text-muted-foreground">
             <span>
-              SLOT {currentSlot.toLocaleString()} / {endSlot.toLocaleString()}
+              SLOT {Number(currentSlot).toLocaleString()} / {Number(endSlot).toLocaleString()}
             </span>
             <span>
               {progress.toFixed(1)}% ELAPSED

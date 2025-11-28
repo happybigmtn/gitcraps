@@ -9,20 +9,17 @@ import { formatSol } from "@/lib/solana";
 import {
   ALL_DICE_COMBINATIONS,
   DICE_MULTIPLIERS,
-  getSumBgColor,
-  getSumColor,
   getIndicesForSum,
   diceToSquare,
 } from "@/lib/dice";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Grid3X3, Dices, X } from "lucide-react";
+import { Grid3X3, X } from "lucide-react";
 
 interface SquareData {
   index: number;
   deployed: bigint;
-  minerCount: number;
+  minerCount: bigint;
 }
 
 interface MiningBoardProps {
@@ -79,10 +76,9 @@ export const MiningBoard = React.memo(function MiningBoard({
   winningSquare = null,
   isRoundActive = true,
 }: MiningBoardProps) {
-  const { selectedSquares, selectedSum, toggleSquare, selectBySum, clearSquares } =
+  const { selectedSquares, toggleSquare, selectBySum, clearSquares } =
     useGameStore();
   const bots = useSimulationStore((state) => state.bots);
-  const simulationRunning = useSimulationStore((state) => state.isRunning);
   const flashingWinningSquare = useSimulationStore((state) => state.flashingWinningSquare);
 
   // Compute bot square map with memoization to avoid recalculating on every render
@@ -100,22 +96,15 @@ export const MiningBoard = React.memo(function MiningBoard({
     Array.from({ length: 36 }, (_, i) => ({
       index: i,
       deployed: 0n,
-      minerCount: 0,
+      minerCount: 0n,
     }));
 
   // Calculate max deployed for heatmap with memoization
-  const maxDeployed = useMemo(() => {
-    return Math.max(...boardSquares.map((s) => Number(s.deployed)), 1);
+  // Use BigInt comparison to avoid precision loss
+  useMemo(() => {
+    const max = boardSquares.reduce((max, s) => s.deployed > max ? s.deployed : max, 0n);
+    return max > 0n ? max : 1n;
   }, [boardSquares]);
-
-  const getHeatmapColor = (deployed: bigint) => {
-    const ratio = Number(deployed) / maxDeployed;
-    if (ratio === 0) return "bg-secondary/50";
-    if (ratio < 0.25) return "bg-chart-2/30";
-    if (ratio < 0.5) return "bg-chart-2/50";
-    if (ratio < 0.75) return "bg-chart-2/70";
-    return "bg-chart-2/90";
-  };
 
   // Get selected count per sum
   const getSelectedCountForSum = (sum: number) => {
@@ -261,7 +250,7 @@ export const MiningBoard = React.memo(function MiningBoard({
                       </span>
 
                       {/* Deployed overlay */}
-                      {Number(square.deployed) > 0 && (
+                      {square.deployed > 0n && (
                         <div className="absolute bottom-0.5 text-[8px] text-[oklch(0.7_0.15_220)] font-bold">
                           {formatSol(square.deployed)}
                         </div>

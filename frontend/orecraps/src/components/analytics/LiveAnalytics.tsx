@@ -8,7 +8,6 @@ import {
   BarChart3,
   TrendingUp,
   TrendingDown,
-  Layers,
   Target,
   Sparkles,
 } from "lucide-react";

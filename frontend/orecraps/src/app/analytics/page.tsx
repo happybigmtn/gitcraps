@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useAnalyticsStore, EpochResult, SimulationSession } from "@/store/analyticsStore";
+import { useAnalyticsStore, SimulationSession } from "@/store/analyticsStore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,11 +17,11 @@ import {
   Target,
   Sparkles,
   Clock,
-  Layers,
   ArrowLeft,
   Trash2,
   Download,
   RefreshCw,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -190,7 +190,7 @@ export default function AnalyticsPage() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [currentSession?.status]);
+  }, [currentSession]);
 
   // Include refreshKey in deps to force recalculation
   const stats = useMemo(

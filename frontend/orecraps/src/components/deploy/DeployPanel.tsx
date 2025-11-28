@@ -31,9 +31,9 @@ export function DeployPanel({
   disabled = false,
   baseReward = 0.15,
 }: DeployPanelProps) {
-  const { publicKey, connected, signTransaction, sendTransaction } = useWallet();
+  const { publicKey, connected, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const { board, round, loading: boardLoading, error: boardError } = useBoard();
+  const { board, loading: boardLoading, error: boardError } = useBoard();
   const {
     deployAmount,
     setDeployAmount,

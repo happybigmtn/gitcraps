@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCrapsStore, useCanPlaceBet, getBetDisplayInfo } from '@/store/crapsStore';
 import { CrapsBetType } from '@/lib/program';
@@ -32,15 +32,19 @@ export function BetButton({
   const reason = betCheck && typeof betCheck === 'object' && 'reason' in betCheck && typeof betCheck.reason === 'string' ? betCheck.reason : undefined;
   const info = getBetDisplayInfo(betType, point);
 
+  const handleClick = useCallback(() => {
+    store.addPendingBet({
+      betType,
+      point,
+      amount: store.betAmount,
+    });
+  }, [store, betType, point]);
+
   return (
     <Button
       variant={variant}
       className={`h-14 flex flex-col items-center justify-center ${className}`}
-      onClick={() => store.addPendingBet({
-        betType,
-        point,
-        amount: store.betAmount,
-      })}
+      onClick={handleClick}
       disabled={disabled || !canBet}
       title={reason || undefined}
     >

@@ -1,17 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { shallow } from "zustand/shallow";
 import {
   CrapsBetType,
   CrapsGame,
   CrapsPosition,
-  POINT_NUMBERS,
-  HARDWAY_NUMBERS,
-  NUM_POINTS,
-  NUM_HARDWAYS,
-  CRAPS_PAYOUTS,
   pointToIndex,
-  indexToPoint,
 } from "@/lib/program";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
@@ -70,7 +63,7 @@ interface CrapsState {
 
 export const useCrapsStore = create<CrapsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // Initial state
       crapsGame: null,
       crapsPosition: null,
@@ -104,7 +97,6 @@ export const useCrapsStore = create<CrapsState>()(
 
       // Quick bet helpers
       addPassLineBet: (amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -118,7 +110,6 @@ export const useCrapsStore = create<CrapsState>()(
       },
 
       addDontPassBet: (amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -132,7 +123,6 @@ export const useCrapsStore = create<CrapsState>()(
       },
 
       addFieldBet: (amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -146,7 +136,6 @@ export const useCrapsStore = create<CrapsState>()(
       },
 
       addAnySevenBet: (amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -160,7 +149,6 @@ export const useCrapsStore = create<CrapsState>()(
       },
 
       addPlaceBet: (point, amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -174,7 +162,6 @@ export const useCrapsStore = create<CrapsState>()(
       },
 
       addHardwayBet: (hardway, amount) => {
-        const state = get();
         set((s) => ({
           pendingBets: [
             ...s.pendingBets,
@@ -471,5 +458,7 @@ export function getBetTypeName(betType: CrapsBetType, point?: number): string {
 
 // Format lamports to SOL display
 export function formatLamports(lamports: bigint): string {
+  // Convert BigInt to Number for display purposes only
+  // Division by LAMPORTS_PER_SOL (1e9) makes the number small enough to avoid precision issues
   return (Number(lamports) / LAMPORTS_PER_SOL).toFixed(4);
 }

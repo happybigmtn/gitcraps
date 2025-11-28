@@ -3,7 +3,6 @@
  * Provides consistent patterns for async state management
  */
 
-import type { StateCreator } from 'zustand';
 
 /**
  * Standard async operation state

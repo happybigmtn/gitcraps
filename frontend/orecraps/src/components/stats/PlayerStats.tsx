@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useGameStore, useWinRate } from "@/store/gameStore";
 import { formatSol, formatCrap } from "@/lib/solana";
 import { toast } from "sonner";
-import { User, Coins, TrendingUp, Gift, Award } from "lucide-react";
+import { User, TrendingUp, Gift, Award } from "lucide-react";
 
 interface PlayerStatsProps {
   minerData?: {
@@ -27,7 +27,7 @@ export function PlayerStats({
   onClaimSol,
   onClaimCrap,
 }: PlayerStatsProps) {
-  const { connected, publicKey } = useWallet();
+  const { connected } = useWallet();
   const { roundHistory } = useGameStore();
   const winRate = useWinRate();
 

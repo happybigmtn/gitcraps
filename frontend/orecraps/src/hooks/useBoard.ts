@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
-import { PublicKey } from "@solana/web3.js";
-import { boardPDA, roundPDA, ORE_PROGRAM_ID } from "@/lib/solana";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { boardPDA, roundPDA } from "@/lib/solana";
 import { BOARD_SIZE } from "@/lib/program";
-import { withFallback, getConnection, getCurrentEndpoint } from "@/lib/rpcManager";
+import { withFallback, getCurrentEndpoint } from "@/lib/rpcManager";
 import { useNetworkStore } from "@/store/networkStore";
 import { createDebugger } from "@/lib/debug";
 import { calculateRng, calculateWinningSquareFromRng } from "@/lib/dice";
@@ -46,6 +45,7 @@ const INITIAL_BACKOFF = 10000; // Start with 10 second backoff on error
 // Based on ore_api::state::Board struct
 const BOARD_ROUND_ID_OFFSET = 8;
 const BOARD_ROUND_SLOTS_OFFSET = 16;
+const BOARD_MIN_SIZE = 24; // discriminator (8) + round_id (8) + round_slots (8)
 
 // Round account layout (based on ore_api::state::Round)
 // After 8-byte discriminator:
@@ -61,8 +61,6 @@ const BOARD_ROUND_SLOTS_OFFSET = 16;
 // total_deployed: u64 (8)
 // total_vaulted: u64 (8)
 // total_winnings: u64 (8)
-
-const ROUND_ID_OFFSET = 8;
 const ROUND_DEPLOYED_OFFSET = 16;
 const ROUND_SLOT_HASH_OFFSET = 16 + 36 * 8; // 304
 const ROUND_COUNT_OFFSET = ROUND_SLOT_HASH_OFFSET + 32; // 336
@@ -72,15 +70,24 @@ const ROUND_RENT_PAYER_OFFSET = ROUND_MOTHERLODE_OFFSET + 8; // 640
 const ROUND_TOP_MINER_OFFSET = ROUND_RENT_PAYER_OFFSET + 32; // 672
 const ROUND_TOTAL_DEPLOYED_OFFSET = ROUND_TOP_MINER_OFFSET + 32 + 8; // 712
 const ROUND_TOTAL_WINNINGS_OFFSET = ROUND_TOTAL_DEPLOYED_OFFSET + 8 + 8; // After total_deployed (8) + total_vaulted (8)
+const ROUND_MIN_SIZE = ROUND_TOTAL_WINNINGS_OFFSET + 8; // Minimum expected size: 728 bytes
 
 
 function readU64(data: Uint8Array, offset: number): bigint {
+  // SECURITY: Validate bounds before reading
+  if (offset < 0 || offset + 8 > data.length) {
+    throw new Error(`Invalid offset ${offset} for u64 read (data length: ${data.length})`);
+  }
   // Read 8 bytes as little-endian u64
   const view = new DataView(data.buffer, data.byteOffset + offset, 8);
   return view.getBigUint64(0, true); // true = little-endian
 }
 
 function readPubkey(data: Uint8Array, offset: number): string {
+  // SECURITY: Validate bounds before reading
+  if (offset < 0 || offset + 32 > data.length) {
+    throw new Error(`Invalid offset ${offset} for Pubkey read (data length: ${data.length})`);
+  }
   const pubkeyBytes = data.slice(offset, offset + 32);
   // Check if all zeros (Pubkey::default())
   if (pubkeyBytes.every((b) => b === 0)) {
@@ -167,15 +174,29 @@ export function useBoard() {
         return;
       }
 
-      const boardData = new Uint8Array(boardAccount.data);
-      const roundId = readU64(boardData, BOARD_ROUND_ID_OFFSET);
-      const roundSlots = readU64(boardData, BOARD_ROUND_SLOTS_OFFSET);
+      // SECURITY: Validate and parse board data with bounds checking
+      let roundId: bigint;
+      try {
+        const boardData = new Uint8Array(boardAccount.data);
 
-      setBoard({
-        roundId,
-        roundSlots,
-        currentSlot: BigInt(currentSlot),
-      });
+        // Validate minimum size
+        if (boardData.length < BOARD_MIN_SIZE) {
+          throw new Error(`Invalid Board data: expected at least ${BOARD_MIN_SIZE} bytes, got ${boardData.length}`);
+        }
+
+        roundId = readU64(boardData, BOARD_ROUND_ID_OFFSET);
+        const roundSlots = readU64(boardData, BOARD_ROUND_SLOTS_OFFSET);
+
+        setBoard({
+          roundId,
+          roundSlots,
+          currentSlot: BigInt(currentSlot),
+        });
+      } catch (parseError) {
+        const errorMsg = parseError instanceof Error ? parseError.message : "Failed to parse board data";
+        console.warn("Board data parsing error:", errorMsg);
+        throw new Error(`Board data malformed: ${errorMsg}`);
+      }
 
       // Only fetch round if round ID changed or we don't have round data
       const needsRoundFetch = lastRoundIdRef.current !== roundId || round === null;
@@ -189,50 +210,67 @@ export function useBoard() {
         });
 
         if (roundAccount) {
-          const roundData = new Uint8Array(roundAccount.data);
+          // SECURITY: Validate and parse round data with bounds checking
+          try {
+            const roundData = new Uint8Array(roundAccount.data);
 
-          // Parse deployed array
-          const deployed: bigint[] = [];
-          for (let i = 0; i < BOARD_SIZE; i++) {
-            deployed.push(readU64(roundData, ROUND_DEPLOYED_OFFSET + i * 8));
+            // Validate minimum size
+            if (roundData.length < ROUND_MIN_SIZE) {
+              throw new Error(`Invalid Round data: expected at least ${ROUND_MIN_SIZE} bytes, got ${roundData.length}`);
+            }
+
+            // Parse deployed array
+            const deployed: bigint[] = [];
+            for (let i = 0; i < BOARD_SIZE; i++) {
+              deployed.push(readU64(roundData, ROUND_DEPLOYED_OFFSET + i * 8));
+            }
+
+            // Parse count array
+            const count: bigint[] = [];
+            for (let i = 0; i < BOARD_SIZE; i++) {
+              count.push(readU64(roundData, ROUND_COUNT_OFFSET + i * 8));
+            }
+
+            const expiresAt = readU64(roundData, ROUND_EXPIRES_AT_OFFSET);
+            const motherlode = readU64(roundData, ROUND_MOTHERLODE_OFFSET);
+            const topMiner = readPubkey(roundData, ROUND_TOP_MINER_OFFSET);
+            const totalDeployed = readU64(roundData, ROUND_TOTAL_DEPLOYED_OFFSET);
+            const totalWinnings = readU64(roundData, ROUND_TOTAL_WINNINGS_OFFSET);
+
+            // Parse slot_hash (validate bounds before slicing)
+            if (ROUND_SLOT_HASH_OFFSET + 32 > roundData.length) {
+              throw new Error(`Invalid offset ${ROUND_SLOT_HASH_OFFSET} for slot_hash read (data length: ${roundData.length})`);
+            }
+            const slotHash = roundData.slice(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
+
+            // Calculate winning square if slot_hash is set
+            let winningSquare: number | null = null;
+            const rng = calculateRng(slotHash);
+            if (rng !== null) {
+              winningSquare = calculateWinningSquareFromRng(rng);
+            }
+
+            setRound({
+              id: roundId,
+              deployed,
+              count,
+              totalDeployed,
+              expiresAt,
+              motherlode,
+              topMiner: topMiner || null,
+              slotHash,
+              winningSquare,
+              totalWinnings,
+            });
+
+            lastRoundIdRef.current = roundId;
+          } catch (parseError) {
+            const errorMsg = parseError instanceof Error ? parseError.message : "Failed to parse round data";
+            console.warn("Round data parsing error:", errorMsg);
+            // Set round to null on parse failure
+            setRound(null);
+            lastRoundIdRef.current = null;
           }
-
-          // Parse count array
-          const count: bigint[] = [];
-          for (let i = 0; i < BOARD_SIZE; i++) {
-            count.push(readU64(roundData, ROUND_COUNT_OFFSET + i * 8));
-          }
-
-          const expiresAt = readU64(roundData, ROUND_EXPIRES_AT_OFFSET);
-          const motherlode = readU64(roundData, ROUND_MOTHERLODE_OFFSET);
-          const topMiner = readPubkey(roundData, ROUND_TOP_MINER_OFFSET);
-          const totalDeployed = readU64(roundData, ROUND_TOTAL_DEPLOYED_OFFSET);
-          const totalWinnings = readU64(roundData, ROUND_TOTAL_WINNINGS_OFFSET);
-
-          // Parse slot_hash
-          const slotHash = roundData.slice(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
-
-          // Calculate winning square if slot_hash is set
-          let winningSquare: number | null = null;
-          const rng = calculateRng(slotHash);
-          if (rng !== null) {
-            winningSquare = calculateWinningSquareFromRng(rng);
-          }
-
-          setRound({
-            id: roundId,
-            deployed,
-            count,
-            totalDeployed,
-            expiresAt,
-            motherlode,
-            topMiner: topMiner || null,
-            slotHash,
-            winningSquare,
-            totalWinnings,
-          });
-
-          lastRoundIdRef.current = roundId;
         } else {
           setRound(null);
           lastRoundIdRef.current = null;
@@ -274,9 +312,14 @@ export function useBoard() {
   // Calculate time remaining until round expires
   const getTimeRemaining = useCallback(() => {
     if (!round || !board) return null;
-    const slotsRemaining = Number(round.expiresAt) - Number(board.currentSlot);
+    const slotsRemaining = Number(round.expiresAt - board.currentSlot);
     return slotsRemaining * 0.4; // Convert to seconds (400ms per slot)
   }, [round, board]);
+
+  // Memoize time remaining calculation to avoid redundant recalculations in polling loop
+  const timeRemaining = useMemo(() => {
+    return getTimeRemaining();
+  }, [getTimeRemaining]);
 
   // Initial fetch and adaptive polling
   // IMPORTANT: Include `network` in dependencies to restart polling when network changes
@@ -300,8 +343,7 @@ export function useBoard() {
       // FIXED: Don't schedule if unmounted
       if (!isMounted) return;
 
-      // Determine next poll interval based on time remaining
-      const timeRemaining = getTimeRemaining();
+      // Determine next poll interval based on memoized time remaining
       let pollInterval = NORMAL_POLL_INTERVAL;
 
       if (timeRemaining !== null && timeRemaining <= 10 && timeRemaining > 0) {
@@ -331,8 +373,8 @@ export function useBoard() {
         abortControllerRef.current.abort();
       }
     };
-  // FIXED: Include all necessary dependencies
-  }, [network, fetchBoard, getTimeRemaining, NORMAL_POLL_INTERVAL, FAST_POLL_INTERVAL, MIN_POLL_INTERVAL]);
+  // FIXED: Use memoized timeRemaining instead of getTimeRemaining to avoid recalculations
+  }, [network, fetchBoard, timeRemaining, NORMAL_POLL_INTERVAL, FAST_POLL_INTERVAL, MIN_POLL_INTERVAL]);
 
   return {
     board,

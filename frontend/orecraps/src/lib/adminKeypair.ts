@@ -54,8 +54,8 @@ export function getAdminKeypair(): Keypair {
     throw new Error(
       "ADMIN_KEYPAIR environment variable is not set. " +
       "Please set ADMIN_KEYPAIR to a base58 encoded secret key. " +
-      "For localnet testing, you can export the key from your Solana config: " +
-      "cat ~/.config/solana/id.json | jq -r '[.[]] | @json' | xargs -I {} solana-keygen pubkey --keypair <(echo {})"
+      "To export from a keypair file: " +
+      "cat /path/to/keypair.json | jq -r '[.[]] | @json' | xargs -I {} solana-keygen pubkey --keypair <(echo {})"
     );
   }
 

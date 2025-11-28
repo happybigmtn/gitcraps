@@ -28,9 +28,7 @@ function roundPDA(roundId: bigint): [PublicKey, number] {
 }
 
 // Round account layout offsets
-const ROUND_ID_OFFSET = 8;
 const ROUND_SLOT_HASH_OFFSET = 8 + 8 + 36 * 8; // After discriminator + id + deployed array = 304
-const ROUND_DICE_RESULTS_OFFSET = 8 + 8 + 36 * 8 + 32 + 36 * 8 + 8 + 8 + 32 + 32 + 8 + 8 + 8 + 8; // Near end
 const BOARD_ROUND_ID_OFFSET = 8;
 
 export async function GET(request: Request) {

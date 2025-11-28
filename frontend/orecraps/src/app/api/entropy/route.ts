@@ -27,10 +27,9 @@ import { getAdminKeypair } from "@/lib/adminKeypair";
 import crypto from "crypto";
 import { keccak256 as keccak256Hash } from "js-sha3";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID, SYSTEM_PROGRAM_ID } from "@/lib/constants";
-import { storeSeed, retrieveSeed, deleteSeed } from "@/lib/seedStorage";
+import { storeSeed, retrieveSeed } from "@/lib/seedStorage";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
 import { toLeBytes, readU64 } from "@/lib/bufferUtils";
-import { validateLocalnetOnly } from "@/lib/middleware";
 
 const debug = createDebugger("EntropyAPI");
 

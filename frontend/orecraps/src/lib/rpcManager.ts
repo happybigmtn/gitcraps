@@ -1,170 +1,90 @@
-import { Connection, clusterApiUrl } from "@solana/web3.js";
-import { createDebugger } from "@/lib/debug";
+/**
+ * RPC Manager - Legacy Compatibility Layer
+ *
+ * This file maintains backward compatibility with the old rpcManager API.
+ * All functionality has been moved to the new network abstraction layer at @/lib/network.
+ *
+ * @deprecated Use @/lib/network instead for new code
+ * @see /src/lib/network/index.ts
+ */
 
-const debug = createDebugger("RPC");
+import { Connection } from "@solana/web3.js";
+import {
+  getConnection as getNetworkConnection,
+  setNetworkMode as setNetworkModeImpl,
+  getNetworkMode as getNetworkModeImpl,
+  getCurrentEndpoint as getCurrentEndpointImpl,
+  reportSuccess as reportSuccessImpl,
+  reportFailure as reportFailureImpl,
+  withFallback as withFallbackImpl,
+} from "@/lib/network";
 
-export type NetworkMode = "localnet" | "devnet";
-
-// RPC endpoints per network
-const NETWORK_ENDPOINTS: Record<NetworkMode, string[]> = {
-  localnet: [
-    "http://127.0.0.1:8899",
-    "http://localhost:8899",
-  ],
-  devnet: [
-    process.env.NEXT_PUBLIC_RPC_ENDPOINT || "",
-    "https://api.devnet.solana.com",
-    "https://devnet.genesysgo.net",
-    clusterApiUrl("devnet"),
-  ].filter(Boolean),
-};
-
-// Current network mode
-let currentNetwork: NetworkMode = "devnet";
-
-// Get endpoints for current network
-function getRpcEndpoints(): string[] {
-  return NETWORK_ENDPOINTS[currentNetwork];
-}
-
-// Track the current endpoint index and connection
-let currentEndpointIndex = 0;
-let currentConnection: Connection | null = null;
-let lastSuccessTime = 0;
-let consecutiveFailures = 0;
-
-// Constants
-const FAILURE_THRESHOLD = 3; // Switch after 3 consecutive failures
-const SUCCESS_RESET_TIME = 30000; // Reset to primary after 30s of success
+// Re-export NetworkMode type for backward compatibility
+export type { NetworkMode } from "@/lib/network";
 
 /**
  * Set the current network mode
+ *
+ * @deprecated Use setNetworkMode from @/lib/network instead
  */
-export function setNetworkMode(network: NetworkMode): void {
-  if (network !== currentNetwork) {
-    currentNetwork = network;
-    currentEndpointIndex = 0;
-    currentConnection = null;
-    consecutiveFailures = 0;
-    debug(`Switched to ${network}`);
-  }
+export function setNetworkMode(network: "localnet" | "devnet"): void {
+  setNetworkModeImpl(network);
 }
 
 /**
  * Get current network mode
+ *
+ * @deprecated Use getNetworkMode from @/lib/network instead
  */
-export function getNetworkMode(): NetworkMode {
-  return currentNetwork;
+export function getNetworkMode(): "localnet" | "devnet" {
+  return getNetworkModeImpl();
 }
 
 /**
  * Get the current best RPC connection
  * Automatically handles failover between endpoints
+ *
+ * @deprecated Use getConnection from @/lib/network instead
  */
 export function getConnection(): Connection {
-  const endpoints = getRpcEndpoints();
-  if (!currentConnection || currentEndpointIndex >= endpoints.length) {
-    currentEndpointIndex = 0;
-    currentConnection = new Connection(endpoints[currentEndpointIndex], {
-      commitment: "confirmed",
-      confirmTransactionInitialTimeout: 60000,
-      disableRetryOnRateLimit: true, // We handle retries ourselves
-    });
-  }
-  return currentConnection;
+  return getNetworkConnection();
 }
 
 /**
  * Report a successful RPC call
+ *
+ * @deprecated Use reportSuccess from @/lib/network instead
  */
 export function reportSuccess(): void {
-  consecutiveFailures = 0;
-  lastSuccessTime = Date.now();
+  reportSuccessImpl();
 }
 
 /**
  * Report a failed RPC call - will switch to fallback after threshold
+ *
+ * @deprecated Use reportFailure from @/lib/network instead
  */
-export function reportFailure(error: Error): void {
-  consecutiveFailures++;
-  
-  const isRateLimited = error.message.includes("429") || 
-                        error.message.includes("rate limit") ||
-                        error.message.includes("Too Many Requests");
-  
-  // Switch faster on rate limits
-  const threshold = isRateLimited ? 1 : FAILURE_THRESHOLD;
-  
-  if (consecutiveFailures >= threshold) {
-    switchToNextEndpoint();
-  }
-}
-
-/**
- * Switch to the next available endpoint
- */
-function switchToNextEndpoint(): void {
-  const endpoints = getRpcEndpoints();
-  const nextIndex = (currentEndpointIndex + 1) % endpoints.length;
-  switchToEndpoint(nextIndex);
-}
-
-/**
- * Switch to a specific endpoint index
- */
-function switchToEndpoint(index: number): void {
-  const endpoints = getRpcEndpoints();
-  if (index === currentEndpointIndex && currentConnection) {
-    return;
-  }
-
-  currentEndpointIndex = index;
-  consecutiveFailures = 0;
-
-  const endpoint = endpoints[currentEndpointIndex];
-  debug(`Switching to endpoint ${currentEndpointIndex + 1}/${endpoints.length}: ${endpoint.slice(0, 50)}...`);
-
-  currentConnection = new Connection(endpoint, {
-    commitment: "confirmed",
-    confirmTransactionInitialTimeout: 60000,
-    disableRetryOnRateLimit: true,
-  });
+export async function reportFailure(error: Error): Promise<void> {
+  await reportFailureImpl(error);
 }
 
 /**
  * Get the current endpoint URL (for debugging)
+ *
+ * @deprecated Use getCurrentEndpoint from @/lib/network instead
  */
 export function getCurrentEndpoint(): string {
-  const endpoints = getRpcEndpoints();
-  return endpoints[currentEndpointIndex] || endpoints[0];
+  return getCurrentEndpointImpl();
 }
 
 /**
  * Wrapper for RPC calls that handles automatic failover
+ *
+ * @deprecated Use withFallback from @/lib/network instead
  */
 export async function withFallback<T>(
   operation: (connection: Connection) => Promise<T>,
   maxRetries = 3
 ): Promise<T> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const connection = getConnection();
-      const result = await operation(connection);
-      reportSuccess();
-      return result;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn("[RPC] Attempt " + (attempt + 1) + " failed:", lastError.message.slice(0, 100));
-      reportFailure(lastError);
-      
-      // Small delay before retry
-      if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-      }
-    }
-  }
-  
-  throw lastError || new Error("RPC operation failed after retries");
+  return withFallbackImpl(operation, maxRetries);
 }

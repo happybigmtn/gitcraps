@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createDebugger } from "@/lib/debug";
 import { squareToDice } from "@/lib/dice";
-import { useSimulationStore, BONUS_BET_PAYOUTS } from "@/store/simulationStore";
+import { useSimulationStore } from "@/store/simulationStore";
 
 const debug = createDebugger("BotLeaderboard");
 import { useBoard } from "@/hooks/useBoard";
@@ -16,8 +16,6 @@ import {
   Play,
   RefreshCw,
   Loader2,
-  TrendingUp,
-  TrendingDown,
   AlertCircle,
   CheckCircle,
   Dice5,
@@ -61,16 +59,14 @@ export function BotLeaderboard() {
 
   // Network and analytics stores
   const { network } = useNetworkStore();
-  const { startSession, recordEpoch, endSession, currentSession } = useAnalyticsStore();
+  const { startSession, recordEpoch, currentSession } = useAnalyticsStore();
 
   const {
     bots,
     epoch,
     isRunning,
     isLoading,
-    currentRound,
     totalEpochs,
-    lastWinningSquare,
     lastDiceRoll,
     flashingWinnerBotIds,
     flashingWinningSquare,
@@ -98,6 +94,8 @@ export function BotLeaderboard() {
   // Sync with on-chain state
   useEffect(() => {
     if (round && board) {
+      // Convert BigInt to Number only at the last moment for the simulation store
+      // These values represent slot numbers which should be well within safe integer range
       setOnChainState(Number(round.expiresAt), Number(board.currentSlot));
     }
   }, [round, board, setOnChainState]);
@@ -187,7 +185,7 @@ export function BotLeaderboard() {
       setTimeout(() => setTxSuccess(null), 3000);
     }
   // Note: We use refs for continuousMode and targetEpochs to avoid stale closures
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [round, board, isRunning, recordRoundResult, recordEpoch]);
 
   // Handle starting a new epoch
@@ -347,7 +345,7 @@ export function BotLeaderboard() {
         console.error("Auto-start epoch failed:", err);
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [pendingAutoStart, isRunning, txLoading]);
 
   // Auto-start next round when current round ends (within same epoch)
@@ -357,7 +355,7 @@ export function BotLeaderboard() {
     const checkRoundEnd = async () => {
       // If we're still in an epoch and need a new round
       if (round.winningSquare === null && board) {
-        const timeRemaining = Number(round.expiresAt) - Number(board.currentSlot);
+        const timeRemaining = Number(round.expiresAt - board.currentSlot);
         if (timeRemaining < -2) { // Round expired (2 slots grace period)
           debug("Round expired, simulating local dice roll...");
           // Use crypto.getRandomValues() for secure random number generation

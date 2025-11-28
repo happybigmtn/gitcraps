@@ -1,4 +1,4 @@
-import { PublicKey, Connection, clusterApiUrl, TransactionInstruction, SystemProgram } from "@solana/web3.js";
+import { PublicKey, Connection, clusterApiUrl, TransactionInstruction } from "@solana/web3.js";
 
 // Program IDs
 // Devnet program ID - deployed for testing
@@ -82,6 +82,8 @@ export function getConnection(network: "devnet" | "mainnet-beta" = "devnet") {
 
 // Format helpers
 export function formatSol(lamports: bigint | number): string {
+  // Convert BigInt to Number for display purposes only
+  // Division by 1e9 makes the number small enough to avoid precision issues
   const sol = Number(lamports) / 1e9;
   return sol.toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -106,6 +108,8 @@ export function formatCrap(amount: bigint | number): string {
 }
 
 export function lamportsToSol(lamports: bigint | number): number {
+  // Convert BigInt to Number for display purposes only
+  // Division by 1e9 makes the number small enough to avoid precision issues
   return Number(lamports) / 1e9;
 }
 

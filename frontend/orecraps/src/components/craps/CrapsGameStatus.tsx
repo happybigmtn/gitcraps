@@ -1,11 +1,11 @@
 "use client";
 
+import { useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useCraps } from "@/hooks/useCraps";
 import {
-  POINT_NUMBERS,
   HARDWAY_NUMBERS,
   indexToPoint,
 } from "@/lib/program";
@@ -14,6 +14,11 @@ import { Dices, Target, CircleDot, Loader2, AlertCircle } from "lucide-react";
 
 export function CrapsGameStatus() {
   const { game, position, loading, error, isComeOut, currentPoint } = useCraps();
+
+  const formatSOL = useCallback(
+    (lamports: bigint) => (Number(lamports) / LAMPORTS_PER_SOL).toFixed(4),
+    []
+  );
 
   if (loading) {
     return (
@@ -50,9 +55,6 @@ export function CrapsGameStatus() {
       </Card>
     );
   }
-
-  const formatSOL = (lamports: bigint) =>
-    (Number(lamports) / LAMPORTS_PER_SOL).toFixed(4);
 
   return (
     <Card>

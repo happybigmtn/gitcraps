@@ -3,12 +3,6 @@ import {
   Connection,
   Keypair,
   PublicKey,
-  SystemProgram,
-  Transaction,
-  TransactionInstruction,
-  LAMPORTS_PER_SOL,
-  sendAndConfirmTransaction,
-  AccountMeta,
 } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
@@ -26,20 +20,6 @@ const debug = createDebugger("LocalnetReset");
 // PDAs
 function boardPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from("board")], ORE_PROGRAM_ID);
-}
-
-function configPDA(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from("config")], ORE_PROGRAM_ID);
-}
-
-function roundPDA(id: bigint): [PublicKey, number] {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(id);
-  return PublicKey.findProgramAddressSync([Buffer.from("round"), buf], ORE_PROGRAM_ID);
-}
-
-function treasuryPDA(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from("treasury")], ORE_PROGRAM_ID);
 }
 
 function varPDA(authority: PublicKey, id: bigint): [PublicKey, number] {
@@ -213,7 +193,7 @@ export async function POST(request: Request) {
 
   try {
 
-    const body = await request.json().catch(() => ({}));
+    await request.json().catch(() => ({}));
 
     const connection = new Connection(LOCALNET_RPC, "confirmed");
     const payer = loadTestKeypair();

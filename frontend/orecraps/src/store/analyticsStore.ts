@@ -26,6 +26,10 @@ export interface EpochResult {
   }[];
 }
 
+// Constants for memory management
+const MAX_EPOCHS_PER_SESSION = 1000;
+const MAX_SESSIONS = 50;
+
 export interface SimulationSession {
   id: string;
   network: "localnet" | "devnet";
@@ -91,7 +95,7 @@ export const useAnalyticsStore = create<AnalyticsState>()(
 
         const updatedSession = {
           ...currentSession,
-          epochs: [...currentSession.epochs, epochResult],
+          epochs: [...currentSession.epochs, epochResult].slice(-MAX_EPOCHS_PER_SESSION),
         };
         set({ currentSession: updatedSession });
       },
@@ -107,7 +111,7 @@ export const useAnalyticsStore = create<AnalyticsState>()(
         };
         set({
           currentSession: null,
-          sessions: [...sessions, completedSession],
+          sessions: [...sessions, completedSession].slice(-MAX_SESSIONS),
         });
       },
 

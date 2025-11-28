@@ -40,7 +40,7 @@ export default function Home() {
     return round.deployed.map((deployed, index) => ({
       index,
       deployed,
-      minerCount: Number(round.count[index]),
+      minerCount: round.count[index],
     }));
   }, [round]);
 
@@ -134,10 +134,10 @@ export default function Home() {
             </Card>
           ) : board && round ? (
             <RoundTimer
-              roundId={Number(board.roundId)}
-              startSlot={Number(round.expiresAt) - Number(board.roundSlots)}
-              endSlot={Number(round.expiresAt)}
-              currentSlot={Number(board.currentSlot)}
+              roundId={board.roundId}
+              startSlot={round.expiresAt - board.roundSlots}
+              endSlot={round.expiresAt}
+              currentSlot={board.currentSlot}
             />
           ) : null}
         </div>

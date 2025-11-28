@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Wallet, LogOut, Copy, ExternalLink, Zap } from "lucide-react";
+import { LogOut, Copy, ExternalLink, Zap } from "lucide-react";
 import { truncateAddress } from "@/lib/solana";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";

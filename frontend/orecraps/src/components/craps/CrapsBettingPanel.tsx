@@ -14,7 +14,6 @@ import {
   useCrapsStore,
   useTotalPendingAmount,
   usePendingBetCount,
-  getBetDisplayInfo,
   getBetTypeName,
 } from "@/store/crapsStore";
 import { useCraps } from "@/hooks/useCraps";
@@ -196,28 +195,101 @@ export function CrapsBettingPanel() {
   }, [publicKey, connected, pendingWinnings, connection, sendTransaction, refetch]);
 
   // Check if a bet type can be placed
-  const canPlaceBet = (betType: CrapsBetType, point?: number): boolean => {
-    if (!game) return false;
+  const canPlaceBet = useCallback(
+    (betType: CrapsBetType): boolean => {
+      if (!game) return false;
 
-    const hasPassLine = (position?.passLine ?? 0n) > 0n;
-    const hasDontPass = (position?.dontPass ?? 0n) > 0n;
+      const hasPassLine = (position?.passLine ?? 0n) > 0n;
+      const hasDontPass = (position?.dontPass ?? 0n) > 0n;
 
-    switch (betType) {
-      case CrapsBetType.PassLine:
-      case CrapsBetType.DontPass:
-        return isComeOut;
-      case CrapsBetType.PassOdds:
-        return !isComeOut && currentPoint !== 0 && hasPassLine;
-      case CrapsBetType.DontPassOdds:
-        return !isComeOut && currentPoint !== 0 && hasDontPass;
-      default:
-        return true;
-    }
-  };
+      switch (betType) {
+        case CrapsBetType.PassLine:
+        case CrapsBetType.DontPass:
+          return isComeOut;
+        case CrapsBetType.PassOdds:
+          return !isComeOut && currentPoint !== 0 && hasPassLine;
+        case CrapsBetType.DontPassOdds:
+          return !isComeOut && currentPoint !== 0 && hasDontPass;
+        default:
+          return true;
+      }
+    },
+    [game, position, isComeOut, currentPoint]
+  );
 
   const houseBankrollSOL = game
     ? Number(game.houseBankroll) / LAMPORTS_PER_SOL
     : 0;
+
+  // Memoized handlers for bet amount presets
+  const handleSetAmount001 = useCallback(() => setBetAmount(0.01), [setBetAmount]);
+  const handleSetAmount01 = useCallback(() => setBetAmount(0.1), [setBetAmount]);
+  const handleSetAmount1 = useCallback(() => setBetAmount(1), [setBetAmount]);
+
+  // Memoized handler for bet amount input change
+  const handleBetAmountChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setBetAmount(parseFloat(e.target.value) || 0);
+    },
+    [setBetAmount]
+  );
+
+  // Memoized handlers for adding bets
+  const handleAddPassOdds = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.PassOdds,
+      point: currentPoint,
+      amount: betAmount,
+    });
+  }, [addPendingBet, currentPoint, betAmount]);
+
+  const handleAddDontPassOdds = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.DontPassOdds,
+      point: currentPoint,
+      amount: betAmount,
+    });
+  }, [addPendingBet, currentPoint, betAmount]);
+
+  const handleAddAnyCraps = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.AnyCraps,
+      point: 0,
+      amount: betAmount,
+    });
+  }, [addPendingBet, betAmount]);
+
+  const handleAddYoEleven = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.YoEleven,
+      point: 0,
+      amount: betAmount,
+    });
+  }, [addPendingBet, betAmount]);
+
+  const handleAddAces = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.Aces,
+      point: 0,
+      amount: betAmount,
+    });
+  }, [addPendingBet, betAmount]);
+
+  const handleAddTwelve = useCallback(() => {
+    addPendingBet({
+      betType: CrapsBetType.Twelve,
+      point: 0,
+      amount: betAmount,
+    });
+  }, [addPendingBet, betAmount]);
+
+  // Memoized handler for removing individual pending bets
+  const handleRemovePendingBet = useCallback(
+    (index: number) => () => {
+      removePendingBet(index);
+    },
+    [removePendingBet]
+  );
 
   // Elegant empty state when game is not initialized
   if (!game) {
@@ -279,16 +351,16 @@ export function CrapsBettingPanel() {
               step="0.01"
               min="0.01"
               value={betAmount}
-              onChange={(e) => setBetAmount(parseFloat(e.target.value) || 0)}
+              onChange={handleBetAmountChange}
               className="font-mono"
             />
-            <Button variant="outline" size="sm" onClick={() => setBetAmount(0.01)}>
+            <Button variant="outline" size="sm" onClick={handleSetAmount001}>
               0.01
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setBetAmount(0.1)}>
+            <Button variant="outline" size="sm" onClick={handleSetAmount01}>
               0.1
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setBetAmount(1)}>
+            <Button variant="outline" size="sm" onClick={handleSetAmount1}>
               1
             </Button>
           </div>
@@ -334,13 +406,7 @@ export function CrapsBettingPanel() {
                 <Button
                   variant="outline"
                   className="h-12 flex flex-col"
-                  onClick={() =>
-                    addPendingBet({
-                      betType: CrapsBetType.PassOdds,
-                      point: currentPoint,
-                      amount: betAmount,
-                    })
-                  }
+                  onClick={handleAddPassOdds}
                   disabled={!canPlaceBet(CrapsBetType.PassOdds)}
                 >
                   <span className="text-xs">Pass Odds</span>
@@ -349,13 +415,7 @@ export function CrapsBettingPanel() {
                 <Button
                   variant="outline"
                   className="h-12 flex flex-col"
-                  onClick={() =>
-                    addPendingBet({
-                      betType: CrapsBetType.DontPassOdds,
-                      point: currentPoint,
-                      amount: betAmount,
-                    })
-                  }
+                  onClick={handleAddDontPassOdds}
                   disabled={!canPlaceBet(CrapsBetType.DontPassOdds)}
                 >
                   <span className="text-xs">Don't Pass Odds</span>
@@ -432,13 +492,7 @@ export function CrapsBettingPanel() {
               <Button
                 variant="outline"
                 className="h-14 flex flex-col"
-                onClick={() =>
-                  addPendingBet({
-                    betType: CrapsBetType.AnyCraps,
-                    point: 0,
-                    amount: betAmount,
-                  })
-                }
+                onClick={handleAddAnyCraps}
               >
                 <span className="text-sm font-bold">Any Craps</span>
                 <span className="text-[10px] text-muted-foreground">7:1</span>
@@ -446,13 +500,7 @@ export function CrapsBettingPanel() {
               <Button
                 variant="outline"
                 className="h-14 flex flex-col"
-                onClick={() =>
-                  addPendingBet({
-                    betType: CrapsBetType.YoEleven,
-                    point: 0,
-                    amount: betAmount,
-                  })
-                }
+                onClick={handleAddYoEleven}
               >
                 <span className="text-sm font-bold">Yo (11)</span>
                 <span className="text-[10px] text-muted-foreground">15:1</span>
@@ -460,13 +508,7 @@ export function CrapsBettingPanel() {
               <Button
                 variant="outline"
                 className="h-14 flex flex-col"
-                onClick={() =>
-                  addPendingBet({
-                    betType: CrapsBetType.Aces,
-                    point: 0,
-                    amount: betAmount,
-                  })
-                }
+                onClick={handleAddAces}
               >
                 <span className="text-sm font-bold">Aces (2)</span>
                 <span className="text-[10px] text-muted-foreground">30:1</span>
@@ -474,13 +516,7 @@ export function CrapsBettingPanel() {
               <Button
                 variant="outline"
                 className="h-14 flex flex-col"
-                onClick={() =>
-                  addPendingBet({
-                    betType: CrapsBetType.Twelve,
-                    point: 0,
-                    amount: betAmount,
-                  })
-                }
+                onClick={handleAddTwelve}
               >
                 <span className="text-sm font-bold">12 (Boxcars)</span>
                 <span className="text-[10px] text-muted-foreground">30:1</span>
@@ -552,7 +588,7 @@ export function CrapsBettingPanel() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => removePendingBet(index)}
+                      onClick={handleRemovePendingBet(index)}
                       className="h-6 w-6 p-0"
                     >
                       <Trash2 className="h-3 w-3" />

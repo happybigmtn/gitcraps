@@ -2,7 +2,6 @@ import {
   PublicKey,
   TransactionInstruction,
   SystemProgram,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import { boardPDA, roundPDA, minerPDA, ORE_PROGRAM_ID } from "./solana";
 import { squareToSum } from "./dice";

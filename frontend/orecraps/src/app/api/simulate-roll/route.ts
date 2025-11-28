@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const localnetError = validateLocalnetOnly();
     if (localnetError) return localnetError;
 
-    const body = await request.json().catch(() => ({}));
+    await request.json().catch(() => ({}));
 
     // Generate random dice roll using crypto for proper randomness
     const randomBytes = new Uint32Array(2);
@@ -78,7 +78,6 @@ export async function POST(request: Request) {
     // Come-out roll rules for Pass/Don't Pass
     const isNatural = diceSum === 7 || diceSum === 11;
     const isCraps = [2, 3, 12].includes(diceSum);
-    const isPoint = [4, 5, 6, 8, 9, 10].includes(diceSum);
 
     outcomes.passLine = {
       wins: isNatural,

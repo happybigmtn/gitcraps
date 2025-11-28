@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DICE_MULTIPLIERS, getRiskColor, squareToSum } from "@/lib/dice";
+import { DICE_MULTIPLIERS, squareToSum } from "@/lib/dice";
 import { useGameStore } from "@/store/gameStore";
 import { BarChart3, Loader2 } from "lucide-react";
 
