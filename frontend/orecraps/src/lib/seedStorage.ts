@@ -74,18 +74,6 @@ export function retrieveSeed(varAddress: string): Buffer | null {
 }
 
 /**
- * Delete a seed for a given Var address
- * @param varAddress - The Var account address (base58 string)
- */
-export function deleteSeed(varAddress: string): void {
-  if (!validateVarAddress(varAddress)) {
-    throw new Error('Invalid varAddress: must be a valid base58 string with no path traversal sequences');
-  }
-  const filePath = path.join(STORAGE_DIR, `${varAddress}.seed`);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-}
-
-/**
  * Encrypt seed data using AES-256-GCM
  * @param data - The seed buffer to encrypt
  * @returns Encrypted buffer with IV, tag, and ciphertext

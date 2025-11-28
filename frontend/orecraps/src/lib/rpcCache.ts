@@ -48,20 +48,3 @@ export async function deduplicatedFetch<T>(
 
   return promise;
 }
-
-/**
- * Clear the entire cache (useful for network changes)
- */
-export function clearRpcCache(): void {
-  requestCache.clear();
-}
-
-/**
- * Get cache statistics for debugging
- */
-export function getRpcCacheStats(): { size: number; keys: string[] } {
-  return {
-    size: requestCache.size,
-    keys: Array.from(requestCache.keys()),
-  };
-}

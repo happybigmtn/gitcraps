@@ -4,6 +4,7 @@ import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { ORE_PROGRAM_ID } from "@/lib/constants";
 import { LOCALNET_RPC, DEVNET_RPC, getRpcEndpoint } from "@/lib/cliConfig";
+import crypto from "crypto";
 
 const debug = createDebugger("GetRoundResult");
 
@@ -45,7 +46,6 @@ function calculateRng(slotHash: Buffer): bigint | null {
 // Calculate winning square using keccak hash (matches on-chain)
 function calculateWinningSquare(slotHash: Buffer): number {
   // Use crypto for keccak256 - same as on-chain
-  const crypto = require("crypto");
   const hash = crypto.createHash("sha3-256").update(slotHash).digest();
   const sample = hash.readBigUInt64LE(0);
 

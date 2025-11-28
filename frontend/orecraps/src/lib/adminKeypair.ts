@@ -85,10 +85,3 @@ export function getAdminKeypair(): Keypair {
     throw error;
   }
 }
-
-/**
- * Clear the cached keypair (useful for testing)
- */
-export function clearKeypairCache(): void {
-  cachedKeypair = null;
-}

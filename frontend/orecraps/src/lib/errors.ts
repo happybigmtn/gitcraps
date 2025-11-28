@@ -60,36 +60,3 @@ export function parseOreError(
   }
   return null;
 }
-
-/**
- * Check if an error code is a game error (1000-1999)
- */
-export function isGameError(errorCode: number): boolean {
-  return errorCode >= 1000 && errorCode < 2000;
-}
-
-/**
- * Check if an error code is a validation error (2000-2999)
- */
-export function isValidationError(errorCode: number): boolean {
-  return errorCode >= 2000 && errorCode < 3000;
-}
-
-/**
- * Check if an error code is a system error (3000-3999)
- */
-export function isSystemError(errorCode: number): boolean {
-  return errorCode >= 3000 && errorCode < 4000;
-}
-
-/**
- * Get the error category as a string
- */
-export function getErrorCategory(
-  errorCode: number
-): "game" | "validation" | "system" | "unknown" {
-  if (isGameError(errorCode)) return "game";
-  if (isValidationError(errorCode)) return "validation";
-  if (isSystemError(errorCode)) return "system";
-  return "unknown";
-}

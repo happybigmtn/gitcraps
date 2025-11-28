@@ -363,15 +363,10 @@ async function handleSample(params: HandlerParams): Promise<Response> {
     commitment: "confirmed",
   });
 
-  // Re-fetch to get slot_hash
-  const updatedVarAccount = await connection.getAccountInfo(varAddress);
-  const updatedVarData = updatedVarAccount ? parseVarAccount(updatedVarAccount.data) : null;
-
   return NextResponse.json({
     success: true,
     action: "sample",
     signature: sig,
-    slotHash: updatedVarData?.slotHash.toString("hex"),
   });
 }
 
@@ -490,29 +485,11 @@ async function handleFullCycle(params: HandlerParams): Promise<Response> {
     commitment: "confirmed",
   });
 
-  // Verify transaction actually succeeded
-  const openTxResult = await connection.getTransaction(openSig, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0
-  });
-
-  if (openTxResult?.meta?.err) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('Open transaction failed:', openTxResult.meta.err); // Always log internally
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? `Open transaction failed: ${JSON.stringify(openTxResult.meta.err)}` : 'Transaction failed',
-      },
-      { status: 500 }
-    );
-  }
-
   results.push(`open: ${openSig}`);
 
-  let currentVarAccount = await connection.getAccountInfo(currentVarAddress);
-  let currentVarData = currentVarAccount ? parseVarAccount(currentVarAccount.data) : null;
+  // Fetch Var account to get end_at slot for waiting
+  const currentVarAccount = await connection.getAccountInfo(currentVarAddress);
+  const currentVarData = currentVarAccount ? parseVarAccount(currentVarAccount.data) : null;
 
   if (!currentVarData) {
     return NextResponse.json({
@@ -540,38 +517,7 @@ async function handleFullCycle(params: HandlerParams): Promise<Response> {
     commitment: "confirmed",
   });
 
-  // Verify transaction actually succeeded
-  const sampleTxResult = await connection.getTransaction(sampleSig, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0
-  });
-
-  if (sampleTxResult?.meta?.err) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('Sample transaction failed:', sampleTxResult.meta.err); // Always log internally
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? `Sample transaction failed: ${JSON.stringify(sampleTxResult.meta.err)}` : 'Transaction failed',
-        results
-      },
-      { status: 500 }
-    );
-  }
-
   results.push(`sample: ${sampleSig}`);
-
-  currentVarAccount = await connection.getAccountInfo(currentVarAddress);
-  currentVarData = currentVarAccount ? parseVarAccount(currentVarAccount.data) : null;
-
-  if (!currentVarData || currentVarData.slotHash.every((b: number) => b === 0)) {
-    return NextResponse.json({
-      success: false,
-      error: "Sample failed - no slot_hash",
-      results,
-    });
-  }
 
   // Step 3: Reveal - disclose seed to compute final value
   debug(`[full-cycle] Revealing with seed`);
@@ -584,33 +530,14 @@ async function handleFullCycle(params: HandlerParams): Promise<Response> {
     commitment: "confirmed",
   });
 
-  // Verify transaction actually succeeded
-  const revealTxResult = await connection.getTransaction(revealSig, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0
-  });
-
-  if (revealTxResult?.meta?.err) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    console.error('Reveal transaction failed:', revealTxResult.meta.err); // Always log internally
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: isDevelopment ? `Reveal transaction failed: ${JSON.stringify(revealTxResult.meta.err)}` : 'Transaction failed',
-        results
-      },
-      { status: 500 }
-    );
-  }
-
   results.push(`reveal: ${revealSig}`);
 
-  currentVarAccount = await connection.getAccountInfo(currentVarAddress);
-  currentVarData = currentVarAccount ? parseVarAccount(currentVarAccount.data) : null;
+  // Final fetch to get the revealed value for response
+  const finalVarAccount = await connection.getAccountInfo(currentVarAddress);
+  const finalVarData = finalVarAccount ? parseVarAccount(finalVarAccount.data) : null;
 
-  if (currentVarData && !currentVarData.value.every((b: number) => b === 0)) {
-    diceResult = calculateDiceFromValue(currentVarData.value);
+  if (finalVarData && !finalVarData.value.every((b: number) => b === 0)) {
+    diceResult = calculateDiceFromValue(finalVarData.value);
     debug(`[full-cycle] Dice result: ${diceResult.die1}-${diceResult.die2}=${diceResult.sum} (sq ${diceResult.winningSquare})`);
   }
 

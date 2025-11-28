@@ -15,6 +15,8 @@ import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID } from "@/lib/constants";
 import { loadTestKeypair } from "@/lib/testKeypair";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
 import crypto from "crypto";
+import { spawnSync } from "child_process";
+import * as fs from "fs";
 
 const debug = createDebugger("LocalnetReset");
 
@@ -146,9 +148,8 @@ async function setupMockVarAccount(
     debug(`  value: ${value.toString("hex").slice(0, 16)}...`);
 
     // Use solana CLI to write the account data (requires admin privileges on localnet)
-    const { spawnSync } = require("child_process");
     const dataFile = `/tmp/var-data-${Date.now()}.bin`;
-    require("fs").writeFileSync(dataFile, data);
+    fs.writeFileSync(dataFile, data);
 
     try {
       const result = spawnSync(
@@ -175,6 +176,15 @@ async function setupMockVarAccount(
     } catch (writeErr) {
       debug("Failed to write Var account via CLI:", writeErr);
       return false;
+    } finally {
+      // Always cleanup temp file
+      try {
+        if (fs.existsSync(dataFile)) {
+          fs.unlinkSync(dataFile);
+        }
+      } catch (cleanupErr) {
+        debug("Failed to cleanup temp file:", cleanupErr);
+      }
     }
   } catch (error) {
     debug("Error setting up mock Var account:", error);
