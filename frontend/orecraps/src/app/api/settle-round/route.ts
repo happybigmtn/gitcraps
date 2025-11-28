@@ -58,15 +58,9 @@ export async function POST(request: Request) {
 
     // Check for execution errors
     if (result.status !== 0) {
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      console.error('CLI command failed:', stderr || stdout); // Always log internally
-
+      debug('CLI command failed:', stderr || stdout);
       return NextResponse.json(
-        {
-          success: false,
-          error: "CLI command failed",
-          ...(isDevelopment && { details: stderr || stdout }),
-        },
+        { success: false, error: "CLI command failed" },
         { status: 500 }
       );
     }

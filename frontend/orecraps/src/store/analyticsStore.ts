@@ -67,7 +67,10 @@ export const useAnalyticsStore = create<AnalyticsState>()(
       currentSession: null,
 
       startSession: (network, programId, totalEpochs) => {
-        const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        // Use crypto for secure session ID generation
+        const randomBytes = new Uint32Array(2);
+        crypto.getRandomValues(randomBytes);
+        const id = `session-${Date.now()}-${randomBytes[0].toString(36)}${randomBytes[1].toString(36)}`;
         const session: SimulationSession = {
           id,
           network,

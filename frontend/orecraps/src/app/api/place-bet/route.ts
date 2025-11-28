@@ -6,6 +6,7 @@ import { apiLimiter } from "@/lib/rateLimit";
 import { CrapsGameService } from "@/services";
 import { loadTestKeypair } from "@/lib/testKeypair";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
+import { validateLocalnetOnly } from "@/lib/middleware";
 
 const debug = createDebugger("PlaceBet");
 
@@ -26,15 +27,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';
-    const isLocalnet = ALLOWED_NETWORK === 'localnet';
-
-    if (!isLocalnet) {
-      return NextResponse.json(
-        { error: "This endpoint is disabled in production" },
-        { status: 403 }
-      );
-    }
+    const localnetError = validateLocalnetOnly();
+    if (localnetError) return localnetError;
 
     const body = await request.json();
     const { bets } = body;
@@ -81,14 +75,9 @@ export async function POST(request: Request) {
     const result = await gameService.placeBets(payer, bets);
 
     if (!result.success) {
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      console.error('Transaction failed:', result.error);
-
+      debug('Transaction failed:', result.error);
       return NextResponse.json(
-        {
-          success: false,
-          error: isDevelopment ? `Transaction failed: ${result.error}` : 'Transaction failed',
-        },
+        { success: false, error: 'Transaction failed' },
         { status: 500 }
       );
     }
