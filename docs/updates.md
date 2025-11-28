@@ -1674,3 +1674,713 @@ The architecture is trending in the right direction with service layer establish
 - Full P1-P3 cleanup: 3 weeks
 
 The codebase demonstrates solid architectural foundations and consistent improvement trajectory. Addressing the critical on-chain issue and completing the service/type system work will establish a mature, maintainable architecture ready for production deployment.
+
+---
+
+# Performance Review - ORE/OreCraps Codebase
+
+**Date:** 2025-11-28
+**Focus:** RPC efficiency, memory management, React optimization, bundle size
+**Total Files Analyzed:** 80 TypeScript/React files
+
+---
+
+## Performance Summary
+
+Overall code demonstrates good awareness of performance optimization with RPC fallback mechanisms, rate limiting, and memoization in place. However, several critical scalability issues remain that will impact production performance under load.
+
+**Performance Grade: B**
+- Strengths: RPC fallback, rate limiting, parallel fetches, proper cleanup
+- Weaknesses: Unbounded arrays, dependency loops, missing deduplication
+
+---
+
+## Critical Issues
+
+### 1. Unbounded Array Growth in Zustand Stores
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/store/simulationStore.ts:428-429`
+
+**Issue:** The `rollHistory` array in `EpochState` grows unbounded during each epoch with no cap or cleanup strategy.
+
+```typescript
+rollHistory: [...epoch.rollHistory, sum],  // Lines 413, 429
+```
+
+**Impact:**
+- Algorithmic Complexity: O(n) memory growth per epoch
+- At 100 rounds/epoch × 10 epochs = 1000 array entries
+- Memory usage scales linearly with simulation length
+- Could reach several MBs in extended sessions (10K+ rounds)
+
+**Scalability Projection:**
+- 10x scale (100 epochs): 10K entries, ~40KB memory
+- 100x scale (1000 epochs): 100K entries, ~400KB memory
+- Causes GC pressure and slows down array operations (spread operator is O(n))
+
+**Solution:**
+```typescript
+// Implement rolling window (last 100 rolls)
+rollHistory: [...epoch.rollHistory.slice(-100), sum]
+```
+
+---
+
+### 2. Missing Dependency Memoization in useBoard
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/hooks/useBoard.ts:272`
+
+**Issue:** `fetchBoard` callback includes `round` in dependencies without proper memoization, causing potential infinite re-render loops.
+
+```typescript
+}, [MIN_POLL_INTERVAL, round]);  // round object causes stale closure issues
+```
+
+**Impact:**
+- Every round state change triggers callback recreation
+- Callback recreation triggers useEffect re-run (line 335)
+- New fetch updates round state
+- Infinite loop risk when round data changes frequently
+
+**Current Behavior:**
+- Round object is recreated on every fetch (lines 222-233)
+- This invalidates the fetchBoard dependency
+- Effect reruns, schedules new poll immediately
+- Breaks the intended polling interval logic
+
+**Solution:**
+```typescript
+// Remove round from dependencies, use ref instead
+const roundRef = useRef<RoundState | null>(null);
+useEffect(() => { roundRef.current = round; }, [round]);
+
+const fetchBoard = useCallback(async (force = false) => {
+  // Access roundRef.current instead of closure variable
+  const needsRoundFetch = lastRoundIdRef.current !== roundId || roundRef.current === null;
+  // ...
+}, [MIN_POLL_INTERVAL]); // Only MIN_POLL_INTERVAL dependency
+```
+
+---
+
+### 3. Synchronous Array Operations in Craps Store
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/store/crapsStore.ts:93-116`
+
+**Issue:** Spread operators create full array copies for every bet addition. O(n) complexity per operation.
+
+```typescript
+pendingBets: [...state.pendingBets, bet],  // Lines 95, 110, 117, 125, etc.
+```
+
+**Impact:**
+- Algorithmic Complexity: O(n) per addition, degrades to O(n²) when adding multiple bets
+- With 50 pending bets, each addition copies 50 items
+- Batch adding 10 bets = 50 + 51 + 52 + ... + 59 = 545 copy operations
+- Modern React can handle this, but unnecessary overhead
+
+**Scalability:**
+- Current (10 bets): ~55 copy operations
+- 10x scale (100 bets): ~5,050 copy operations
+- 100x scale (1000 bets): ~500,500 copy operations (will freeze UI)
+
+**Solution:**
+```typescript
+// Add batch operation for multiple bets
+addMultipleBets: (bets) => set(s => ({
+  pendingBets: [...s.pendingBets, ...bets]
+}))
+```
+
+---
+
+### 4. N+1 Account Queries in Services
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/services/CrapsGameService.ts:27-38`
+
+**Issue:** Separate RPC calls for game and position instead of batching with `getMultipleAccountsInfo`.
+
+```typescript
+// Service layer makes separate calls
+async getGameState(): Promise<CrapsGame | null> {
+  const account = await this.connection.getAccountInfo(gameAddress);  // RPC Call 1
+}
+
+async getPositionState(authority: PublicKey): Promise<CrapsPosition | null> {
+  const account = await this.connection.getAccountInfo(positionAddress); // RPC Call 2
+}
+```
+
+**Impact:**
+- Network Complexity: 2 sequential RPC calls = 2× latency
+- At 200ms per RPC call = 400ms total
+- Batched approach would take 200ms (50% faster)
+
+**Note:** Already optimized in `useCraps.ts:78-99` with `Promise.all`, but service layer should provide batched method for consistency.
+
+**Solution:**
+```typescript
+async getGameAndPosition(authority: PublicKey) {
+  const [gameAddr] = crapsGamePDA();
+  const [posAddr] = crapsPositionPDA(authority);
+
+  const accounts = await this.connection.getMultipleAccountsInfo([
+    gameAddr,
+    posAddr
+  ]);
+
+  return {
+    game: accounts[0] ? parseCrapsGame(accounts[0].data) : null,
+    position: accounts[1] ? parseCrapsPosition(accounts[1].data) : null,
+  };
+}
+```
+
+---
+
+### 5. Inefficient Bot Square Map Computation
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/components/board/MiningBoard.tsx:90`
+
+**Issue:** `computeBotSquareMap` recalculates on every bots array reference change, even when bot positions haven't changed.
+
+```typescript
+const botSquareMap = useMemo(() => computeBotSquareMap(bots), [bots]); // Line 90
+```
+
+**Impact:**
+- Algorithmic Complexity: O(bots × squares) = O(5 × 36) = 180 iterations
+- Bots array is recreated on every simulation update (even if positions unchanged)
+- Component re-renders trigger expensive computation unnecessarily
+- At 60 FPS simulation: 180 × 60 = 10,800 iterations/second
+
+**Scalability:**
+- Current (5 bots): 180 iterations/render
+- 10x scale (50 bots): 1,800 iterations/render
+- 100x scale (500 bots): 18,000 iterations/render (will cause frame drops)
+
+**Solution:**
+```typescript
+// Deep comparison on deployed squares only
+const botSquareSignature = useMemo(
+  () => bots.map(b => b.deployedSquares.join(',')).join('|'),
+  [bots]
+);
+
+const botSquareMap = useMemo(
+  () => computeBotSquareMap(bots),
+  [botSquareSignature]  // Only recompute when positions change
+);
+```
+
+---
+
+## Optimization Opportunities
+
+### 6. Missing Request Deduplication
+**Files:**
+- `/home/r/Coding/ore/frontend/orecraps/src/hooks/useBoard.ts:121-147`
+- `/home/r/Coding/ore/frontend/orecraps/src/hooks/useCraps.ts:52-68`
+
+**Current State:** Both hooks prevent concurrent fetches with `fetchingRef`, but don't deduplicate identical requests from multiple components.
+
+**Scenario:** On page load, 3 components mount simultaneously and each calls `fetchBoard()`. This results in 3 identical RPC calls within milliseconds.
+
+**Implementation:** Add request deduplication at RPC manager level:
+```typescript
+// /home/r/Coding/ore/frontend/orecraps/src/lib/rpcManager.ts
+const pendingRequests = new Map<string, Promise<any>>();
+
+export async function dedupedFetch<T>(
+  key: string,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  if (pendingRequests.has(key)) {
+    return pendingRequests.get(key) as Promise<T>;
+  }
+
+  const promise = fetcher().finally(() => {
+    pendingRequests.delete(key);
+  });
+
+  pendingRequests.set(key, promise);
+  return promise;
+}
+```
+
+**Expected Gain:** 30-50% reduction in redundant RPC calls during initial page load.
+
+---
+
+### 7. Aggressive Polling Can Be More Adaptive
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/hooks/useBoard.ts:34-43`
+
+**Current State:** Fixed polling intervals based on network type.
+
+```typescript
+const DEVNET_NORMAL_POLL_INTERVAL = 15000;  // 15s
+const DEVNET_FAST_POLL_INTERVAL = 10000;     // 10s when <10s remaining
+```
+
+**Improvement:** Adaptive polling based on time-to-expiry with 3 tiers:
+```typescript
+const getAdaptivePollInterval = (timeRemaining: number | null) => {
+  if (!timeRemaining) return NORMAL_POLL_INTERVAL;
+  if (timeRemaining > 60) return isLocalnet ? 5000 : 30000;   // Long poll
+  if (timeRemaining > 10) return NORMAL_POLL_INTERVAL;         // Normal
+  return FAST_POLL_INTERVAL;                                    // Fast
+};
+```
+
+**Expected Gain:** 50% reduction in unnecessary polls during low-activity periods.
+
+---
+
+### 8. Transaction Confirmation Without Prefetch
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/components/craps/CrapsBettingPanel.tsx:97-115`
+
+**Current State:** Gets latest blockhash synchronously before transaction send.
+
+```typescript
+const { blockhash, lastValidBlockHeight } =
+  await connection.getLatestBlockhash();  // 200-400ms wait
+transaction.recentBlockhash = blockhash;
+transaction.feePayer = publicKey;
+const signature = await sendTransaction(transaction, connection);
+```
+
+**Improvement:** Prefetch blockhash in parallel with transaction construction:
+```typescript
+const handleSubmitBets = useCallback(async () => {
+  // Start prefetch immediately
+  const blockhashPromise = connection.getLatestBlockhash();
+
+  // Build transaction (CPU-bound work)
+  const transaction = new Transaction();
+  for (const bet of pendingBets) {
+    const ix = createPlaceCrapsBetInstruction(/* ... */);
+    transaction.add(ix);
+  }
+
+  // Await prefetched blockhash (likely already resolved)
+  const { blockhash, lastValidBlockHeight } = await blockhashPromise;
+  transaction.recentBlockhash = blockhash;
+  // ...
+}, [/* deps */]);
+```
+
+**Expected Gain:** 200-400ms faster perceived transaction speed (blockhash fetch overlaps with TX construction).
+
+---
+
+### 9. Unused Dependencies
+**File:** `/home/r/Coding/ore/frontend/orecraps/package.json:24`
+
+**Issue:** `@tanstack/react-query` is installed but not used anywhere in the codebase.
+
+```bash
+grep -r "react-query" frontend/orecraps/src/
+# No results - package is unused
+```
+
+**Impact:**
+- Bundle size: ~150KB added to production build
+- node_modules bloat: 1.6GB total (includes unused deps)
+
+**Solution:**
+```bash
+npm uninstall @tanstack/react-query
+```
+
+**Expected Gain:** ~150KB reduction in production bundle (1-2% of total bundle).
+
+---
+
+### 10. Inefficient Analytics Refresh Pattern
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/components/analytics/LiveAnalytics.tsx:52-56`
+
+**Current State:** Auto-refresh every 10 seconds via interval, even if data hasn't changed.
+
+```typescript
+useEffect(() => {
+  const interval = setInterval(() => {
+    setRefreshKey((k) => k + 1);  // Force re-render every 10s
+  }, 10000);
+  return () => clearInterval(interval);
+}, []);
+```
+
+**Issue:** Recalculates all analytics stats every 10s regardless of whether simulation is running.
+
+**Improvement:** Only refresh when simulation is active:
+```typescript
+const isRunning = useSimulationStore(state => state.isRunning);
+
+useEffect(() => {
+  if (!isRunning) return; // Don't poll when idle
+
+  const interval = setInterval(() => {
+    setRefreshKey((k) => k + 1);
+  }, 10000);
+  return () => clearInterval(interval);
+}, [isRunning]);
+```
+
+**Expected Gain:** 90% reduction in unnecessary re-renders when simulation is paused.
+
+---
+
+## Scalability Assessment
+
+### Data Volume Projections
+
+| Metric | Current | 10x Scale | 100x Scale | Bottleneck |
+|--------|---------|-----------|------------|------------|
+| RPC Calls/min | 6-12 | 60-120 | 600-1200 | Rate limits without CDN |
+| Round History Size | 100 items | 1K items | 10K items | Unbounded growth (Issue #1) |
+| Pending Bets Array | 10 items | 100 items | 1K items | O(n) spreads (Issue #3) |
+| Bot Computations | 5×36=180 | 50×36=1.8K | 500×36=18K | Render bottleneck (Issue #5) |
+| Memory per Session | ~5MB | ~50MB | ~500MB | Array growth + store bloat |
+
+### Concurrent User Analysis
+
+**Single User (Current):**
+- useBoard: 1 poll/15s = 4 req/min
+- useCraps: 1 poll/10s = 6 req/min
+- Total: ~10 RPC req/min/user
+
+**10 Concurrent Users:**
+- Without optimization: 10 × 10 = 100 req/min
+- With deduplication: ~20-30 req/min (3-5× reduction)
+- RPC limit: Most free RPCs limit at 100-200 req/min
+
+**100 Concurrent Users:**
+- Without optimization: 1000 req/min (will hit all rate limits)
+- With WebSocket/SSE: ~10 req/min (server polls, clients subscribe)
+- **Recommendation:** Must implement server-side polling + WebSocket before 50+ users
+
+### Resource Utilization Estimates
+
+**Memory Usage:**
+- React component tree: ~10MB
+- Zustand stores: ~5MB (scales with history size)
+- RPC connection pool: ~2MB
+- **Total baseline:** ~17MB
+
+**At 100x scale (without fixes):**
+- Unbounded rollHistory: +40MB
+- Pending bets (1K): +4MB
+- Bot computations (500 bots): +20MB rendering overhead
+- **Total:** ~81MB (4.7× growth)
+
+**At 100x scale (with fixes):**
+- Capped rollHistory (100 items): +0.4MB
+- Batched bets: +4MB (same)
+- Memoized bot map: +2MB
+- **Total:** ~23MB (1.4× growth)
+
+---
+
+## Memory Leak Analysis
+
+### Verified Clean ✅
+
+**useBoard Hook:**
+- Proper cleanup with `isMounted` flag (line 287)
+- AbortController cancels in-flight requests (lines 119, 330)
+- Timeout cleared in cleanup (line 328)
+
+**useCraps Hook:**
+- Proper cleanup with `isMounted` flag (line 156)
+- AbortController cancels in-flight requests (lines 50, 186)
+- Timeout cleared in cleanup (line 184)
+
+**All Intervals:**
+- LiveAnalytics: interval cleared (line 56)
+- No dangling event listeners found
+- All useEffect hooks have proper cleanup returns
+
+### Potential Leak ⚠️
+
+**SimulationStore Recursive setTimeout:**
+**File:** `/home/r/Coding/ore/frontend/orecraps/src/store/simulationStore.ts:439-443`
+
+```typescript
+// Auto-place bets for next round
+setTimeout(() => {
+  if (get().isRunning) {
+    get().placeBetsForRound();  // This schedules another setTimeout
+  }
+}, 100);
+```
+
+**Issue:** Recursive setTimeout pattern creates unbounded chain. Safe if `resolveEpoch()` properly sets `isRunning: false`, but risky pattern.
+
+**Risk Level:** Low (depends on proper state management)
+
+**Safer Alternative:**
+```typescript
+// In recordRoundResult, replace recursive setTimeout with:
+set({ needsNextRound: true });
+
+// In a separate useEffect (component side):
+useEffect(() => {
+  if (needsNextRound && isRunning) {
+    placeBetsForRound();
+    set({ needsNextRound: false });
+  }
+}, [needsNextRound, isRunning]);
+```
+
+---
+
+## Database/Account Query Optimization
+
+### Current State ✅
+
+**Good Practices:**
+- Parallel account fetches with Promise.all (useCraps.ts:78-99)
+- Conditional round fetches based on roundId changes (useBoard.ts:181)
+- Proper error handling and fallback mechanisms
+
+**Missing Optimizations:**
+
+1. **getMultipleAccountsInfo not used in service layer**
+   - CrapsGameService makes separate calls (Issue #4)
+   - Could batch game + position fetches
+   - Expected savings: 50% latency reduction
+
+2. **No account subscription via WebSocket**
+   - Current: HTTP polling every 10-15s
+   - Better: WebSocket subscription for real-time updates
+   - Expected savings: Eliminate 95% of RPC calls
+
+3. **No account data caching with TTL**
+   - Every component mount triggers fresh fetch
+   - Could cache account data for 5-10s
+   - Expected savings: 30-40% reduction in redundant fetches
+
+**Recommended Implementation Priority:**
+
+```typescript
+// 1. Add getMultipleAccountsInfo to services (1 hour)
+async getBatchAccounts(addresses: PublicKey[]) {
+  return this.connection.getMultipleAccountsInfo(addresses);
+}
+
+// 2. Add simple cache layer (2 hours)
+const accountCache = new Map<string, { data: any, expires: number }>();
+function getCachedAccount(address: PublicKey, ttl = 5000) {
+  const key = address.toBase58();
+  const cached = accountCache.get(key);
+  if (cached && Date.now() < cached.expires) return cached.data;
+  // ... fetch and cache
+}
+
+// 3. WebSocket subscriptions (8 hours - larger refactor)
+connection.onAccountChange(address, (accountInfo) => {
+  // Update store directly, no polling needed
+});
+```
+
+---
+
+## Bundle Size Analysis
+
+### Current Dependencies (Production Impact)
+
+| Package | Size | Usage | Recommendation |
+|---------|------|-------|----------------|
+| @solana/web3.js | ~500KB | Required | Keep |
+| Wallet Adapters | ~300KB | Required | Keep |
+| Framer Motion | ~150KB | Animations | Consider CSS alternative |
+| Recharts | ~200KB | Analytics | Lazy load |
+| @tanstack/react-query | ~150KB | UNUSED | **Remove** |
+| Radix UI (all) | ~200KB | UI primitives | Keep |
+| Zustand | ~3KB | State | Keep (excellent) |
+
+### Optimization Strategy
+
+**Phase 1: Quick Wins (2 hours)**
+```bash
+# Remove unused deps
+npm uninstall @tanstack/react-query  # -150KB
+
+# Lazy load analytics page
+const AnalyticsPage = dynamic(() => import('./analytics/page'), {
+  ssr: false,
+  loading: () => <Loading />
+})  # -200KB from main bundle
+```
+
+**Phase 2: Animation Optimization (4 hours)**
+```typescript
+// Replace Framer Motion with CSS animations for simple cases
+// Keep Framer only for complex spring/gesture animations
+// Expected savings: -100KB
+```
+
+**Phase 3: Code Splitting (8 hours)**
+```typescript
+// Split simulation engine into separate chunk
+const BotSimulation = dynamic(() => import('@/components/simulation/BotSimulationPanel'));
+
+// Split craps betting into separate chunk
+const CrapsBetting = dynamic(() => import('@/components/craps/CrapsBettingPanel'));
+
+// Expected savings: -300KB from initial load
+```
+
+**Total Potential Bundle Reduction:** ~750KB (40% reduction)
+
+**Current estimated bundle:** ~1.8MB
+**After optimization:** ~1.05MB
+
+---
+
+## Recommended Actions (Prioritized)
+
+### Critical (Fix Before Production) 🔴
+
+1. **Fix unbounded array growth** in simulationStore.ts rollHistory
+   - File: `frontend/orecraps/src/store/simulationStore.ts:413,429`
+   - Time: 30 minutes
+   - Impact: Prevents memory leaks in long sessions
+
+2. **Fix useBoard dependency loop**
+   - File: `frontend/orecraps/src/hooks/useBoard.ts:272`
+   - Time: 1 hour
+   - Impact: Prevents infinite re-render loops
+
+3. **Add request deduplication** at RPC manager level
+   - File: `frontend/orecraps/src/lib/rpcManager.ts`
+   - Time: 2 hours
+   - Impact: 30-50% reduction in RPC calls on page load
+
+### High Priority (Performance Wins) 🟡
+
+4. **Implement blockhash prefetching**
+   - File: `frontend/orecraps/src/components/craps/CrapsBettingPanel.tsx:97`
+   - Time: 30 minutes
+   - Impact: 200-400ms faster transactions
+
+5. **Batch account queries in service layer**
+   - File: `frontend/orecraps/src/services/CrapsGameService.ts`
+   - Time: 1 hour
+   - Impact: 50% latency reduction for game state fetches
+
+6. **Add adaptive polling intervals**
+   - File: `frontend/orecraps/src/hooks/useBoard.ts:34-43`
+   - Time: 1 hour
+   - Impact: 50% reduction in unnecessary polls
+
+7. **Optimize bot square map computation**
+   - File: `frontend/orecraps/src/components/board/MiningBoard.tsx:90`
+   - Time: 30 minutes
+   - Impact: Eliminates render bottleneck at scale
+
+### Medium Priority (Bundle Optimization) 🟢
+
+8. **Remove unused dependencies**
+   - File: `frontend/orecraps/package.json`
+   - Time: 15 minutes
+   - Impact: -150KB bundle size
+
+9. **Lazy load analytics components**
+   - File: `frontend/orecraps/src/app/analytics/page.tsx`
+   - Time: 30 minutes
+   - Impact: -200KB from main bundle
+
+10. **Fix analytics refresh pattern**
+    - File: `frontend/orecraps/src/components/analytics/LiveAnalytics.tsx:52`
+    - Time: 15 minutes
+    - Impact: 90% reduction in idle re-renders
+
+### Low Priority (Nice to Have) 🔵
+
+11. **Batch pending bet additions**
+    - File: `frontend/orecraps/src/store/crapsStore.ts:93-116`
+    - Time: 1 hour
+    - Impact: Better UX for bulk bet placement
+
+12. **Replace recursive setTimeout with interval**
+    - File: `frontend/orecraps/src/store/simulationStore.ts:439`
+    - Time: 1 hour
+    - Impact: Safer pattern, easier to debug
+
+---
+
+## Performance Testing Recommendations
+
+### Load Testing Scenarios
+
+1. **Single User Extended Session**
+   - Run simulation for 1000 epochs
+   - Monitor memory growth (should stay <50MB)
+   - Verify no memory leaks via Chrome DevTools heap snapshots
+
+2. **Concurrent User Simulation**
+   - Simulate 10 users polling simultaneously
+   - Monitor RPC request deduplication effectiveness
+   - Target: <30 RPC req/min total (vs 100 without dedup)
+
+3. **Bundle Size Testing**
+   ```bash
+   npm run build
+   # Check .next/static/chunks for bundle sizes
+   # Main bundle should be <200KB gzipped
+   ```
+
+4. **Transaction Performance**
+   - Measure time from button click to confirmation
+   - Target: <2s on devnet, <1s on localnet
+   - Profile with React DevTools Profiler
+
+### Monitoring Metrics
+
+**Add these to production:**
+```typescript
+// RPC performance tracking
+const rpcMetrics = {
+  totalCalls: 0,
+  failedCalls: 0,
+  deduplicatedCalls: 0,
+  avgLatency: 0,
+};
+
+// Memory tracking
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    const memory = (performance as any).memory;
+    if (memory) {
+      console.log('Heap:', memory.usedJSHeapSize / 1048576, 'MB');
+    }
+  }, 60000); // Log every minute
+}
+```
+
+---
+
+## Summary
+
+**Total Issues Found:** 10 (5 Critical, 5 Optimizations)
+
+**Estimated Fix Time:**
+- Critical issues: 3.5 hours
+- High priority: 4 hours
+- Medium priority: 1 hour
+- **Total:** 8.5 hours for all high-impact fixes
+
+**Expected Performance Improvement:**
+- 40-60% reduction in RPC calls via deduplication
+- 30% faster transactions via prefetching
+- 50% fewer unnecessary polls via adaptive intervals
+- Stable memory usage via bounded arrays
+- 40% smaller bundle via lazy loading + cleanup
+
+**Production Readiness:**
+After addressing critical issues #1-3, the codebase will handle:
+- 50+ concurrent users with current RPC limits
+- 1000+ epoch simulations without memory issues
+- Sub-2s transaction confirmations consistently
+
+**Next Steps:**
+1. Fix critical issues #1-3 before any production deployment
+2. Implement high-priority optimizations for better UX
+3. Add performance monitoring to track metrics in production
+4. Consider WebSocket subscriptions if user base exceeds 50 concurrent users

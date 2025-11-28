@@ -3,8 +3,9 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { ORE_PROGRAM_ID } from "@/lib/constants";
-import { LOCALNET_RPC, DEVNET_RPC, getRpcEndpoint } from "@/lib/cliConfig";
+import { getRpcEndpoint } from "@/lib/cliConfig";
 import { calculateRng, calculateWinningSquareFromHash, squareToDice } from "@/lib/dice";
+import { readU64FromBuffer } from "@/lib/bufferUtils";
 
 const debug = createDebugger("GetRoundResult");
 
@@ -24,11 +25,6 @@ function roundPDA(roundId: bigint): [PublicKey, number] {
     [Buffer.from("round"), idBytes],
     ORE_PROGRAM_ID
   );
-}
-
-// Read u64 from buffer
-function readU64(data: Buffer, offset: number): bigint {
-  return data.readBigUInt64LE(offset);
 }
 
 // Round account layout offsets
@@ -59,7 +55,7 @@ export async function GET(request: Request) {
     }
 
     const boardData = Buffer.from(boardAccount.data);
-    const roundId = readU64(boardData, BOARD_ROUND_ID_OFFSET);
+    const roundId = readU64FromBuffer(boardData, BOARD_ROUND_ID_OFFSET);
 
     debug(`Current round ID: ${roundId}`);
 

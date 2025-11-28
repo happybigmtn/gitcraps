@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
 import { diceToSquare } from "@/lib/dice";
+import { validateLocalnetOnly } from "@/lib/middleware";
 
 const debug = createDebugger("SimulateRoll");
 
@@ -15,21 +16,16 @@ const debug = createDebugger("SimulateRoll");
  */
 export async function POST(request: Request) {
   try {
-    const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';
-    const isLocalnet = ALLOWED_NETWORK === 'localnet';
-
-    if (!isLocalnet) {
-      return NextResponse.json(
-        { error: "This endpoint is disabled in production" },
-        { status: 403 }
-      );
-    }
+    const localnetError = validateLocalnetOnly();
+    if (localnetError) return localnetError;
 
     const body = await request.json().catch(() => ({}));
 
-    // Generate random dice roll (1-6 each)
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
+    // Generate random dice roll using crypto for proper randomness
+    const randomBytes = new Uint32Array(2);
+    crypto.getRandomValues(randomBytes);
+    const die1 = (randomBytes[0] % 6) + 1;
+    const die2 = (randomBytes[1] % 6) + 1;
     const diceSum = die1 + die2;
     const winningSquare = diceToSquare(die1, die2);
 

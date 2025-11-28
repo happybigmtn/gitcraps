@@ -15,6 +15,7 @@ import { validateAdminToken } from "@/lib/adminAuth";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID } from "@/lib/constants";
 import { loadTestKeypair } from "@/lib/testKeypair";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
+import { validateLocalnetOnly } from "@/lib/middleware";
 import crypto from "crypto";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -205,16 +206,11 @@ export async function POST(request: Request) {
     return authResult.response;
   }
 
-  try {
-    const ALLOWED_NETWORK = process.env.SOLANA_NETWORK || 'localnet';
-    const isLocalnet = ALLOWED_NETWORK === 'localnet';
+  // Validate localnet only
+  const localnetError = validateLocalnetOnly();
+  if (localnetError) return localnetError;
 
-    if (!isLocalnet) {
-      return NextResponse.json(
-        { error: "This endpoint is disabled in production" },
-        { status: 403 }
-      );
-    }
+  try {
 
     const body = await request.json().catch(() => ({}));
 

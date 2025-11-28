@@ -29,6 +29,8 @@ import { keccak256 as keccak256Hash } from "js-sha3";
 import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID, SYSTEM_PROGRAM_ID } from "@/lib/constants";
 import { storeSeed, retrieveSeed, deleteSeed } from "@/lib/seedStorage";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
+import { toLeBytes, readU64 } from "@/lib/bufferUtils";
+import { validateLocalnetOnly } from "@/lib/middleware";
 
 const debug = createDebugger("EntropyAPI");
 
@@ -58,22 +60,6 @@ const VAR_OFFSETS = {
   start_at: 224,     // 8 bytes
   end_at: 232,       // 8 bytes
 };                   // Total: 240 bytes
-
-function toLeBytes(value: bigint, length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = Number((value >> BigInt(8 * i)) & 0xffn);
-  }
-  return bytes;
-}
-
-function readU64(data: Uint8Array, offset: number): bigint {
-  let value = 0n;
-  for (let i = 0; i < 8; i++) {
-    value |= BigInt(data[offset + i]) << BigInt(8 * i);
-  }
-  return value;
-}
 
 function keccak256(data: Buffer): Buffer {
   // Use proper Keccak256 (Ethereum/Solana style), NOT SHA3-256

@@ -233,6 +233,9 @@ const DEFAULT_BOTS: Bot[] = [
   },
 ];
 
+// Cap roll history to prevent unbounded memory growth
+const MAX_ROLL_HISTORY = 1000;
+
 const DEFAULT_EPOCH: EpochState = {
   epochNumber: 0,
   roundsInEpoch: 0,
@@ -410,7 +413,7 @@ export const useSimulationStore = create<SimulationState>()(
         epoch: {
           ...epoch,
           uniqueSums: newUniqueSums,
-          rollHistory: [...epoch.rollHistory, sum],
+          rollHistory: [...epoch.rollHistory, sum].slice(-MAX_ROLL_HISTORY),
           bonusBetMultiplier: bonusMultiplier,
         },
         isRunning: false,
@@ -426,7 +429,7 @@ export const useSimulationStore = create<SimulationState>()(
         epoch: {
           ...epoch,
           uniqueSums: newUniqueSums,
-          rollHistory: [...epoch.rollHistory, sum],
+          rollHistory: [...epoch.rollHistory, sum].slice(-MAX_ROLL_HISTORY),
           bonusBetMultiplier: bonusMultiplier,
         },
         lastWinningSquare: winningSquare,
