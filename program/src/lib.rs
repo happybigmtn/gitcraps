@@ -57,6 +57,10 @@ pub fn process_instruction(
         OreInstruction::SettleCraps => process_settle_craps(accounts, data)?,
         OreInstruction::ClaimCrapsWinnings => process_claim_craps_winnings(accounts, data)?,
         OreInstruction::FundCrapsHouse => process_fund_craps_house(accounts, data)?,
+
+        // Migration
+        OreInstruction::MigrateRound => process_migrate_round(accounts, data)?,
+        OreInstruction::MigrateMiner => process_migrate_miner(accounts, data)?,
     }
 
     Ok(())

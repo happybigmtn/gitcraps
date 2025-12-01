@@ -9,6 +9,8 @@ mod set_var_address;
 mod new_var;
 mod bury;
 mod wrap;
+mod migrate_round;
+mod migrate_miner;
 
 pub use initialize::*;
 pub use set_admin::*;
@@ -19,3 +21,5 @@ pub use set_var_address::*;
 pub use new_var::*;
 pub use bury::*;
 pub use wrap::*;
+pub use migrate_round::*;
+pub use migrate_miner::*;

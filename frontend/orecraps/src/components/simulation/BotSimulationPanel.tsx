@@ -255,7 +255,7 @@ export function BotSimulationPanel() {
             )}
           >
             {totalPnl > 0 ? "+" : ""}
-            {totalPnl.toFixed(4)} SOL
+            {totalPnl.toFixed(4)} RNG
           </span>
         </div>
 

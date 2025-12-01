@@ -38,6 +38,20 @@ mod ts_types {
         YoEleven = 13,
         Aces = 14,
         Twelve = 15,
+
+        // Bonus Craps (multi-roll side bets)
+        BonusSmall = 16,
+        BonusTall = 17,
+        BonusAll = 18,
+
+        // Come-out only side bets (point specified for FieldersChoice)
+        FireBet = 19,
+        DiffDoubles = 20,
+        RideTheLine = 21,
+        MugsyCorner = 22,
+        HotHand = 23,
+        ReplayBet = 24,
+        FieldersChoice = 25,
     }
 
     /// TypeScript export for CrapsGame state

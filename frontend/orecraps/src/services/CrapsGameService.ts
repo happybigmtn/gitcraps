@@ -1,7 +1,10 @@
-import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { ONE_RNG } from '@/lib/solana';
 import { TransactionService } from './LegacyTransactionService';
 import {
   createPlaceCrapsBetInstruction,
+  createClaimCrapsWinningsInstruction,
+  createSettleCrapsInstruction,
   crapsGamePDA,
   crapsPositionPDA,
   parseCrapsGame,
@@ -14,7 +17,7 @@ import {
 export interface PlaceBetParams {
   betType: CrapsBetType;
   point?: number;
-  amount: number; // in SOL
+  amount: number; // in RNG
 }
 
 export class CrapsGameService {
@@ -43,12 +46,12 @@ export class CrapsGameService {
     bets: PlaceBetParams[]
   ): Promise<{ signature: string; success: boolean; error?: string; betsPlaced: number }> {
     const instructions = bets.map(bet => {
-      const amountLamports = BigInt(Math.floor(bet.amount * LAMPORTS_PER_SOL));
+      const amountBaseUnits = BigInt(Math.floor(bet.amount * Number(ONE_RNG)));
       return createPlaceCrapsBetInstruction(
         payer.publicKey,
         bet.betType,
         bet.point || 0,
-        amountLamports
+        amountBaseUnits
       );
     });
 
@@ -76,5 +79,141 @@ export class CrapsGameService {
       valid: true,
       balance: balanceSOL,
     };
+  }
+
+  /**
+   * Place bets on behalf of a user with a separate fee payer
+   * Used for delegated transactions where server pays gas
+   *
+   * @param feePayer - Keypair that will pay transaction fees
+   * @param userWallet - User's wallet public key (for account derivation)
+   * @param bets - Array of bets to place
+   */
+  async placeBetsWithFeePayer(
+    feePayer: Keypair,
+    userWallet: PublicKey,
+    bets: PlaceBetParams[]
+  ): Promise<{ signature: string; success: boolean; error?: string; betsPlaced: number }> {
+    try {
+      const instructions = bets.map(bet => {
+        const amountBaseUnits = BigInt(Math.floor(bet.amount * Number(ONE_RNG)));
+        return createPlaceCrapsBetInstruction(
+          userWallet,
+          bet.betType,
+          bet.point || 0,
+          amountBaseUnits
+        );
+      });
+
+      const tx = new Transaction().add(...instructions);
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = feePayer.publicKey;
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        tx,
+        [feePayer],
+        { commitment: 'confirmed' }
+      );
+
+      return {
+        signature,
+        success: true,
+        betsPlaced: bets.length,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        signature: '',
+        success: false,
+        error: errorMessage,
+        betsPlaced: 0,
+      };
+    }
+  }
+
+  /**
+   * Claim winnings on behalf of a user with a separate fee payer
+   * Used for delegated transactions where server pays gas
+   *
+   * @param feePayer - Keypair that will pay transaction fees
+   * @param userWallet - User's wallet public key
+   */
+  async claimWinningsWithFeePayer(
+    feePayer: Keypair,
+    userWallet: PublicKey
+  ): Promise<{ signature: string; success: boolean; error?: string }> {
+    try {
+      const instruction = createClaimCrapsWinningsInstruction(userWallet);
+
+      const tx = new Transaction().add(instruction);
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = feePayer.publicKey;
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        tx,
+        [feePayer],
+        { commitment: 'confirmed' }
+      );
+
+      return {
+        signature,
+        success: true,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        signature: '',
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Settle bets on behalf of a user with a separate fee payer
+   * Used for delegated transactions where server pays gas
+   *
+   * @param feePayer - Keypair that will pay transaction fees
+   * @param userWallet - User's wallet public key
+   * @param winningSquare - The winning dice roll
+   * @param roundId - The round ID to settle
+   */
+  async settleBetsWithFeePayer(
+    feePayer: Keypair,
+    userWallet: PublicKey,
+    winningSquare: bigint,
+    roundId: bigint
+  ): Promise<{ signature: string; success: boolean; error?: string }> {
+    try {
+      const instruction = createSettleCrapsInstruction(userWallet, winningSquare, roundId);
+
+      const tx = new Transaction().add(instruction);
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = feePayer.publicKey;
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        tx,
+        [feePayer],
+        { commitment: 'confirmed' }
+      );
+
+      return {
+        signature,
+        success: true,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        signature: '',
+        success: false,
+        error: errorMessage,
+      };
+    }
   }
 }

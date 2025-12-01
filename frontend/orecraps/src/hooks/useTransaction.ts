@@ -1,9 +1,18 @@
 "use client";
 
+/**
+ * useTransaction Hook - Migrated for Anza Kit compatibility
+ *
+ * This hook provides transaction submission functionality.
+ * Uses wallet adapter for signing and legacy web3.js Transaction types.
+ * Kit types are exposed via re-exports from solana.ts.
+ */
+
 import { useState, useCallback } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { Transaction, TransactionInstruction } from '@solana/web3.js';
 import { toast } from 'sonner';
+import { type Address, toKitAddress } from '@/lib/solana';
 
 interface UseTransactionOptions {
   onSuccess?: (signature: string) => void;
@@ -12,7 +21,7 @@ interface UseTransactionOptions {
 
 export function useTransaction(options: UseTransactionOptions = {}) {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +44,16 @@ export function useTransaction(options: UseTransactionOptions = {}) {
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
-      const signature = await sendTransaction(tx, connection);
+      // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+      if (!signTransaction) {
+        throw new Error('Wallet does not support signTransaction');
+      }
+
+      const signedTx = await signTransaction(tx);
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
       if (!signature) {
         throw new Error('No signature returned');
@@ -59,13 +77,21 @@ export function useTransaction(options: UseTransactionOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [connection, publicKey, sendTransaction, options]);
+  }, [connection, publicKey, signTransaction, options]);
+
+  // Get wallet address as Kit Address type for compatibility
+  const walletAddress: Address | null = publicKey ? toKitAddress(publicKey) : null;
 
   return {
     submitTransaction,
     isLoading,
     error,
+    // Kit-compatible address
+    walletAddress,
   };
 }
 
 export default useTransaction;
+
+// Re-export Kit types for convenience
+export { type Address } from '@/lib/solana';

@@ -1,3 +1,11 @@
+/**
+ * Transaction Service - Migrated for Anza Kit compatibility
+ *
+ * This service provides transaction building, signing, and sending logic.
+ * Uses wallet adapter for signing and legacy web3.js Transaction types.
+ * Kit types are available via re-exports for gradual migration.
+ */
+
 import {
   Connection,
   Transaction,
@@ -11,6 +19,7 @@ import {
 import { WalletContextState } from "@solana/wallet-adapter-react";
 import { getConnection, withFallback } from "@/lib/network";
 import { createDebugger } from "@/lib/debug";
+import { type Address, toKitAddress } from "@/lib/solana";
 import {
   createPlaceCrapsBetInstruction,
   createSettleCrapsInstruction,
@@ -66,7 +75,7 @@ export interface PlaceBetParams {
   betType: CrapsBetType;
   /** Point number (for Come/Place/Hardway bets) */
   point?: number;
-  /** Amount in SOL */
+  /** Amount in CRAP tokens (display units, e.g. 1.0 = 1 CRAP) */
   amount: number;
 }
 
@@ -198,9 +207,19 @@ export class TransactionService {
         return "Transaction cancelled by user";
       }
 
+      // InvalidAccountData during Token Transfer - user doesn't have token account
+      if (message.includes("InvalidAccountData") && message.includes("Transfer")) {
+        return "You don't have a CRAP token account. You need CRAP tokens to place bets. Get CRAP from the faucet first.";
+      }
+
+      // Generic InvalidAccountData - usually means token account doesn't exist
+      if (message.includes("InvalidAccountData") || message.includes("invalid account data")) {
+        return "Token account not found. Make sure you have CRAP tokens in your wallet before placing bets.";
+      }
+
       // Insufficient funds
       if (message.includes("insufficient funds") || message.includes("0x1")) {
-        return "Insufficient SOL balance for transaction";
+        return "Insufficient balance for transaction";
       }
 
       // Rate limit
@@ -247,8 +266,8 @@ export class TransactionService {
         throw new Error("Wallet not connected");
       }
 
-      if (!wallet.sendTransaction) {
-        throw new Error("Wallet does not support sendTransaction");
+      if (!wallet.signTransaction) {
+        throw new Error("Wallet does not support signTransaction");
       }
 
       debug("Building transaction for wallet", wallet.publicKey.toBase58());
@@ -259,12 +278,13 @@ export class TransactionService {
 
       debug("Requesting wallet signature...");
 
-      // Send transaction through wallet
-      const sendOptions: SendOptions = {
+      // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+      // This pattern works more reliably with browser extension wallets
+      const signedTx = await wallet.signTransaction(transaction);
+      const signature = await conn.sendRawTransaction(signedTx.serialize(), {
         skipPreflight: opts.skipPreflight,
-      };
-
-      const signature = await wallet.sendTransaction(transaction, conn, sendOptions);
+        preflightCommitment: 'confirmed',
+      });
 
       // Validate signature
       this.validateSignature(signature);
@@ -448,14 +468,14 @@ export class TransactionService {
     try {
       // Build instructions for all bets
       const instructions = bets.map((bet) => {
-        const amountLamports = BigInt(
-          Math.floor(bet.amount * 1_000_000_000) // LAMPORTS_PER_SOL
+        const amountBaseUnits = BigInt(
+          Math.floor(bet.amount * 1_000_000_000) // ONE_RNG
         );
         return createPlaceCrapsBetInstruction(
           wallet.publicKey!,
           bet.betType,
           bet.point || 0,
-          amountLamports
+          amountBaseUnits
         );
       });
 
@@ -530,18 +550,18 @@ export class TransactionService {
   }
 
   /**
-   * Fund the craps house bankroll
+   * Fund the craps house bankroll with CRAP tokens
    *
    * @param wallet - Wallet to sign the transaction
    * @param connection - Connection to use
-   * @param amountLamports - Amount to fund in lamports
+   * @param amountBaseUnits - Amount to fund in CRAP base units (9 decimals)
    * @param options - Transaction options
    * @returns Transaction result
    */
   async fundCrapsHouse(
     wallet: WalletContextState,
     connection: Connection,
-    amountLamports: bigint,
+    amountBaseUnits: bigint,
     options: SendTransactionOptions = {}
   ): Promise<TransactionResult> {
     if (!wallet.publicKey) {
@@ -553,7 +573,7 @@ export class TransactionService {
 
     const instruction = createFundCrapsHouseInstruction(
       wallet.publicKey,
-      amountLamports
+      amountBaseUnits
     );
 
     return this.sendWithWallet([instruction], wallet, connection, options);
@@ -668,3 +688,6 @@ export class TransactionService {
 export function createTransactionService(connection?: Connection): TransactionService {
   return new TransactionService(connection);
 }
+
+// Re-export Kit types for convenience
+export { type Address, toKitAddress } from "@/lib/solana";

@@ -1,0 +1,90 @@
+{
+  "rpcConnection": {
+    "status": "success",
+    "slot": 425132646,
+    "version": {
+      "feature-set": 688298317,
+      "solana-core": "3.0.0"
+    }
+  },
+  "programExists": {
+    "status": "success",
+    "size": 36
+  },
+  "walletBalance": {
+    "status": "success",
+    "balance": 5.775078349,
+    "address": "gUHM7aKpe5grLDvZq3sBMAwP68rwnPe5NJnULBc5t2C"
+  },
+  "boardInitialized": {
+    "status": "success",
+    "address": "FKUBSpmzd2gDdoenmwJRGiZJVcXL5kFD3yeWBYtergMn"
+  },
+  "betTests": [
+    {
+      "name": "PassLine",
+      "betType": 0,
+      "point": 0,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "Come4",
+      "betType": 4,
+      "point": 4,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "Place4",
+      "betType": 8,
+      "point": 4,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "Hard4",
+      "betType": 9,
+      "point": 4,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "Field",
+      "betType": 10,
+      "point": 0,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "AnySeven",
+      "betType": 11,
+      "point": 0,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    },
+    {
+      "name": "Aces",
+      "betType": 14,
+      "point": 0,
+      "status": "sim_success",
+      "signature": null,
+      "error": null,
+      "simulated": true
+    }
+  ],
+  "issues": [],
+  "startTime": 1764527273425
+}

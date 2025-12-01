@@ -114,15 +114,17 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
 }
 
 // let [signer_info, authority_info, automation_info, board_info, miner_info, round_info, system_program] =
+// [signer_rng_ata, round_rng_ata, rng_mint, token_program] [var_info, entropy_program]
 
-/// Deploys SOL to squares for mining with a dice prediction.
+/// Deploys RNG tokens to squares for mining with a dice prediction.
+/// Players stake RNG tokens to bet on dice outcomes and earn CRAP rewards.
 ///
 /// # Arguments
 /// * `signer` - The signer of the transaction
 /// * `authority` - The authority of the miner account
-/// * `amount` - Amount of SOL to deploy per square (in lamports)
+/// * `amount` - Amount of RNG tokens to deploy per square (in token units with 9 decimals)
 /// * `round_id` - The current round ID
-/// * `squares` - Array of 25 booleans indicating which squares to deploy to
+/// * `squares` - Array of 36 booleans indicating which squares to deploy to
 /// * `dice_prediction` - Dice sum prediction (0=safe mode, 2-12=bet on that sum)
 ///
 /// # Dice Prediction
@@ -133,6 +135,10 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
 /// - 5 or 9: 9x payout (4/36 probability)
 /// - 6 or 8: 7.2x payout (5/36 probability)
 /// - 7: 6x payout (6/36 probability)
+///
+/// # Token Flow
+/// RNG tokens are transferred from signer's ATA to round's ATA.
+/// Winners receive CRAP tokens as rewards.
 pub fn deploy(
     signer: Pubkey,
     authority: Pubkey,
@@ -141,11 +147,17 @@ pub fn deploy(
     squares: [bool; BOARD_SIZE],
     dice_prediction: u8,
 ) -> Instruction {
+    use crate::consts::RNG_MINT_ADDRESS;
+
     let automation_address = automation_pda(authority).0;
     let board_address = board_pda().0;
     let miner_address = miner_pda(authority).0;
     let round_address = round_pda(round_id).0;
     let entropy_var_address = entropy_api::state::var_pda(board_address, 0).0;
+
+    // RNG token accounts
+    let signer_rng_ata = get_associated_token_address(&signer, &RNG_MINT_ADDRESS);
+    let round_rng_ata = get_associated_token_address(&round_address, &RNG_MINT_ADDRESS);
 
     // Convert array of 36 booleans into a 64-bit mask where each bit represents whether
     // that square index is selected (1) or not (0)
@@ -159,6 +171,7 @@ pub fn deploy(
     Instruction {
         program_id: crate::ID,
         accounts: vec![
+            // Ore accounts (7)
             AccountMeta::new(signer, true),
             AccountMeta::new(authority, false),
             AccountMeta::new(automation_address, false),
@@ -166,7 +179,12 @@ pub fn deploy(
             AccountMeta::new(miner_address, false),
             AccountMeta::new(round_address, false),
             AccountMeta::new_readonly(system_program::ID, false),
-            // Entropy accounts.
+            // Token accounts (4) - for RNG transfer
+            AccountMeta::new(signer_rng_ata, false),
+            AccountMeta::new(round_rng_ata, false),
+            AccountMeta::new_readonly(RNG_MINT_ADDRESS, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            // Entropy accounts (2)
             AccountMeta::new(entropy_var_address, false),
             AccountMeta::new_readonly(entropy_api::ID, false),
         ],
@@ -540,5 +558,40 @@ pub fn start_round(signer: Pubkey, round_id: u64, duration: u64) -> Instruction 
             duration: duration.to_le_bytes(),
         }
         .to_bytes(),
+    }
+}
+
+/// Migrate a Round account to the new struct size (admin only).
+/// This reallocates the account and initializes new fields.
+pub fn migrate_round(signer: Pubkey, round_id: u64) -> Instruction {
+    let config_address = config_pda().0;
+    let round_address = round_pda(round_id).0;
+    Instruction {
+        program_id: crate::ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new_readonly(config_address, false),
+            AccountMeta::new(round_address, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: MigrateRound {
+            round_id: round_id.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
+/// Migrate a Miner account to the new struct size.
+/// This reallocates the account and initializes new fields.
+pub fn migrate_miner(signer: Pubkey, authority: Pubkey) -> Instruction {
+    let miner_address = miner_pda(authority).0;
+    Instruction {
+        program_id: crate::ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(miner_address, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: MigrateMiner {}.to_bytes(),
     }
 }

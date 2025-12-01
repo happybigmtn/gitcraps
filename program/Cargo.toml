@@ -17,6 +17,8 @@ name = "ore"
 [features]
 default = []
 debug = []
+localnet = []  # Bypasses RNG validation for localnet testing
+devnet = ["ore-api/devnet"]  # Use devnet-specific mint addresses
 
 [dependencies]
 bincode.workspace = true

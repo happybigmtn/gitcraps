@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DICE_FACE_PATTERNS } from "@/lib/dice";
@@ -43,6 +43,10 @@ export function DiceAnimation({
   const [displayDie2, setDisplayDie2] = useState(die2);
   const [rollPhase, setRollPhase] = useState<"idle" | "rolling" | "landed">("idle");
 
+  // Use a ref to store the callback to avoid re-running the effect when callback changes
+  const onRollCompleteRef = useRef(onRollComplete);
+  onRollCompleteRef.current = onRollComplete;
+
   useEffect(() => {
     if (isRolling) {
       setRollPhase("rolling");
@@ -59,7 +63,7 @@ export function DiceAnimation({
         setDisplayDie1(die1);
         setDisplayDie2(die2);
         setRollPhase("landed");
-        onRollComplete?.();
+        onRollCompleteRef.current?.();
       }, 2000);
 
       return () => {
@@ -71,7 +75,7 @@ export function DiceAnimation({
       setDisplayDie2(die2);
       setRollPhase("idle");
     }
-  }, [isRolling, die1, die2, onRollComplete]);
+  }, [isRolling, die1, die2]);
 
   const rollVariants = {
     idle: {

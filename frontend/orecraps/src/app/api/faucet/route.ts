@@ -7,14 +7,41 @@ import { LOCALNET_RPC, getKeypairPath } from "@/lib/cliConfig";
 
 const debug = createDebugger("Faucet");
 
-const LOCALNET_RNG_MINT = "RaBMafFSe53m9VU7CFf7ZWv7cQwUYFwBt926YZKLAVC";
+// Token mints by network - RNG tokens for mining
+// Must match RNG_MINT_ADDRESS in api/src/consts.rs
+const RNG_MINTS = {
+  localnet: "RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump",
+  devnet: "8HJyJPD4iWD1X9FxZEjDuVpPqSBvNeaJCczXeK2xsShs", // Real devnet mint
+};
 
-// Amount to airdrop: 1000 RNG tokens (with 9 decimals)
-const AIRDROP_AMOUNT = "1000";
+// CRAP token mints - for localnet testing only (so users can test craps bets)
+const CRAP_MINTS = {
+  localnet: "CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump",
+};
+
+const RPC_URLS = {
+  localnet: LOCALNET_RPC,
+  devnet: "https://api.devnet.solana.com",
+};
+
+// Amount to airdrop: 10 RNG tokens (devnet) or 100 RNG (localnet for testing)
+const RNG_AIRDROP_AMOUNTS = {
+  localnet: "100", // More for localnet testing
+  devnet: "10",    // 10 RNG for first 1000 players
+};
+
+// CRAP airdrop amounts (localnet only - for testing craps bets)
+const CRAP_AIRDROP_AMOUNTS = {
+  localnet: "100", // 100 CRAP for testing craps bets
+};
+
+// First 1000 players limit for devnet
+const MAX_DEVNET_CLAIMS = 1000;
 
 // SECURITY: Rate limiting to prevent faucet abuse
 const walletRequestTimes = new Map<string, number>();
-const FAUCET_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const claimedWallets = new Set<string>(); // Track unique wallets for devnet limit
+const FAUCET_COOLDOWN_MS = 60 * 1000; // 1 minute for localnet (fast iteration)
 
 // Validate Solana address using PublicKey constructor
 function isValidSolanaAddress(address: string): boolean {
@@ -59,39 +86,67 @@ export async function POST(request: Request) {
       );
     }
 
-    // Only allow faucet on localnet
-    if (network !== "localnet") {
+    // Validate network (support both localnet and devnet)
+    if (network !== "localnet" && network !== "devnet") {
       return NextResponse.json(
-        { success: false, error: "Faucet only available on localnet" },
+        { success: false, error: "Faucet available on localnet and devnet only" },
         { status: 400 }
       );
     }
 
-    // SECURITY: Rate limiting per wallet address
-    const lastRequest = walletRequestTimes.get(wallet);
-    const now = Date.now();
-    if (lastRequest && (now - lastRequest) < FAUCET_COOLDOWN_MS) {
-      const minutesRemaining = Math.ceil((FAUCET_COOLDOWN_MS - (now - lastRequest)) / 60000);
-      return NextResponse.json(
-        { success: false, error: `Rate limited. Try again in ${minutesRemaining} minutes.` },
-        { status: 429 }
-      );
+    // For devnet: check if already claimed (one-time only)
+    if (network === "devnet") {
+      if (claimedWallets.has(wallet)) {
+        return NextResponse.json(
+          { success: false, error: "You have already claimed your 10 RNG. Each wallet can only claim once." },
+          { status: 400 }
+        );
+      }
+
+      // Check if we've hit the 1000 player limit
+      if (claimedWallets.size >= MAX_DEVNET_CLAIMS) {
+        return NextResponse.json(
+          { success: false, error: "Faucet limit reached. All 1000 allocations have been claimed." },
+          { status: 400 }
+        );
+      }
     }
 
-    debug(`Faucet request for wallet: ${wallet}`);
-
-    // First, airdrop SOL if needed for transaction fees
-    // SECURITY: Using spawnSync with array args prevents command injection
-    try {
-      debug(`Airdropping SOL to: ${wallet}`);
-      const airdropResult = runCommand('solana', ['airdrop', '2', wallet, '--url', LOCALNET_RPC]);
-      if (airdropResult.success) {
-        debug("SOL airdrop successful");
-      } else {
-        debug("SOL airdrop skipped:", airdropResult.stderr);
+    // SECURITY: Rate limiting per wallet address (for localnet only, devnet is one-time)
+    if (network === "localnet") {
+      const lastRequest = walletRequestTimes.get(wallet);
+      const now = Date.now();
+      if (lastRequest && (now - lastRequest) < FAUCET_COOLDOWN_MS) {
+        const minutesRemaining = Math.ceil((FAUCET_COOLDOWN_MS - (now - lastRequest)) / 60000);
+        return NextResponse.json(
+          { success: false, error: `Rate limited. Try again in ${minutesRemaining} minutes.` },
+          { status: 429 }
+        );
       }
-    } catch (error) {
-      debug("SOL airdrop skipped (may already have SOL):", error);
+    }
+
+    const rpcUrl = RPC_URLS[network as keyof typeof RPC_URLS];
+    const rngMint = RNG_MINTS[network as keyof typeof RNG_MINTS];
+    const rngAirdropAmount = RNG_AIRDROP_AMOUNTS[network as keyof typeof RNG_AIRDROP_AMOUNTS];
+    const crapMint = network === "localnet" ? CRAP_MINTS.localnet : null;
+    const crapAirdropAmount = network === "localnet" ? CRAP_AIRDROP_AMOUNTS.localnet : null;
+
+    debug(`Faucet request for wallet: ${wallet} on ${network}`);
+
+    // First, airdrop SOL if needed for transaction fees (localnet only)
+    // SECURITY: Using spawnSync with array args prevents command injection
+    if (network === "localnet") {
+      try {
+        debug(`Airdropping SOL to: ${wallet}`);
+        const airdropResult = runCommand('solana', ['airdrop', '2', wallet, '--url', rpcUrl]);
+        if (airdropResult.success) {
+          debug("SOL airdrop successful");
+        } else {
+          debug("SOL airdrop skipped:", airdropResult.stderr);
+        }
+      } catch (error) {
+        debug("SOL airdrop skipped (may already have SOL):", error);
+      }
     }
 
     // Create token account for user if it doesn't exist and mint tokens
@@ -103,7 +158,7 @@ export async function POST(request: Request) {
     try {
       // Get the ATA address for this wallet and mint
       debug(`Checking ATA for: ${wallet}`);
-      const ataCheckResult = runCommand('spl-token', ['accounts', LOCALNET_RNG_MINT, '--owner', wallet, '--url', LOCALNET_RPC]);
+      const ataCheckResult = runCommand('spl-token', ['accounts', rngMint, '--owner', wallet, '--url', rpcUrl]);
       debug("ATA check output:", ataCheckResult.stdout);
 
       // Parse ATA address from output if it exists
@@ -121,7 +176,7 @@ export async function POST(request: Request) {
       debug(`Creating ATA for: ${wallet}`);
       try {
         const keypairPath = getKeypairPath();
-        const createAtaResult = runCommand('spl-token', ['create-account', LOCALNET_RNG_MINT, '--owner', wallet, '--fee-payer', keypairPath, '--url', LOCALNET_RPC]);
+        const createAtaResult = runCommand('spl-token', ['create-account', rngMint, '--owner', wallet, '--fee-payer', keypairPath, '--url', rpcUrl]);
         debug("ATA creation output:", createAtaResult.stdout);
         const ataMatch = createAtaResult.stdout.match(/Creating account ([A-HJ-NP-Za-km-z1-9]{32,44})/);
         if (ataMatch) {
@@ -133,30 +188,66 @@ export async function POST(request: Request) {
       }
     }
 
-    // Mint tokens to the user's ATA (use --recipient-owner to specify wallet)
-    debug(`Minting RNG to: ${wallet}`);
-    const mintResult = runCommand('spl-token', ['mint', LOCALNET_RNG_MINT, AIRDROP_AMOUNT, '--recipient-owner', wallet, '--url', LOCALNET_RPC]);
+    // Mint RNG tokens to the user's ATA (use --recipient-owner to specify wallet)
+    debug(`Minting ${rngAirdropAmount} RNG to: ${wallet}`);
+    const rngMintResult = runCommand('spl-token', ['mint', rngMint, rngAirdropAmount, '--recipient-owner', wallet, '--url', rpcUrl]);
 
-    debug("Mint stdout:", mintResult.stdout);
-    if (mintResult.stderr) {
-      debug("Mint stderr:", mintResult.stderr);
+    debug("RNG Mint stdout:", rngMintResult.stdout);
+    if (rngMintResult.stderr) {
+      debug("RNG Mint stderr:", rngMintResult.stderr);
     }
 
-    const stdout = mintResult.stdout;
+    // Parse signature from RNG mint
+    const rngSigMatch = rngMintResult.stdout.match(/Signature: (\w+)/i);
+    const rngSignature = rngSigMatch ? rngSigMatch[1] : null;
 
-    // Parse signature from output
-    const sigMatch = stdout.match(/Signature: (\w+)/i);
-    const signature = sigMatch ? sigMatch[1] : null;
+    // For localnet: Also mint CRAP tokens so users can test craps bets immediately
+    let crapSignature: string | null = null;
+    if (network === "localnet" && crapMint && crapAirdropAmount) {
+      // First, create the CRAP ATA if it doesn't exist
+      debug(`Checking/creating CRAP ATA for: ${wallet}`);
+      const keypairPath = getKeypairPath();
+      const createCrapAtaResult = runCommand('spl-token', ['create-account', crapMint, '--owner', wallet, '--fee-payer', keypairPath, '--url', rpcUrl]);
+      debug("CRAP ATA creation output:", createCrapAtaResult.stdout || createCrapAtaResult.stderr);
 
-    // SECURITY: Record successful request time for rate limiting
-    walletRequestTimes.set(wallet, now);
+      // Now mint CRAP tokens
+      debug(`Minting ${crapAirdropAmount} CRAP to: ${wallet}`);
+      const crapMintResult = runCommand('spl-token', ['mint', crapMint, crapAirdropAmount, '--recipient-owner', wallet, '--url', rpcUrl]);
+
+      debug("CRAP Mint stdout:", crapMintResult.stdout);
+      if (crapMintResult.stderr) {
+        debug("CRAP Mint stderr:", crapMintResult.stderr);
+      }
+
+      const crapSigMatch = crapMintResult.stdout.match(/Signature: (\w+)/i);
+      crapSignature = crapSigMatch ? crapSigMatch[1] : null;
+    }
+
+    // Track claims
+    const now = Date.now();
+    if (network === "devnet") {
+      claimedWallets.add(wallet);
+      debug(`Devnet claims: ${claimedWallets.size}/${MAX_DEVNET_CLAIMS}`);
+    } else {
+      walletRequestTimes.set(wallet, now);
+    }
+
+    // Build response message
+    const message = network === "localnet"
+      ? `Airdropped ${rngAirdropAmount} RNG + ${crapAirdropAmount} CRAP tokens`
+      : `Airdropped ${rngAirdropAmount} RNG tokens`;
 
     return NextResponse.json({
       success: true,
-      message: `Airdropped ${AIRDROP_AMOUNT} RNG tokens`,
-      signature,
-      amount: AIRDROP_AMOUNT,
-      mint: LOCALNET_RNG_MINT,
+      message,
+      signature: rngSignature,
+      crapSignature: crapSignature || undefined,
+      rngAmount: rngAirdropAmount,
+      crapAmount: crapAirdropAmount || undefined,
+      rngMint,
+      crapMint: crapMint || undefined,
+      network,
+      claimsRemaining: network === "devnet" ? MAX_DEVNET_CLAIMS - claimedWallets.size : undefined,
     });
   } catch (error) {
     return handleApiError(error);

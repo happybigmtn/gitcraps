@@ -75,3 +75,8 @@ pub fn craps_game_pda() -> (Pubkey, u8) {
 pub fn craps_position_pda(authority: Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[CRAPS_POSITION, &authority.to_bytes()], &crate::ID)
 }
+
+/// The PDA for the craps vault token account (holds CRAP tokens for the house).
+pub fn craps_vault_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[CRAPS_VAULT], &crate::ID)
+}

@@ -1,8 +1,17 @@
 "use client";
 
+/**
+ * useBetting Hook - Migrated for Anza Kit compatibility
+ *
+ * This hook provides betting state management and operations.
+ * Uses wallet adapter for signing and legacy web3.js Transaction types.
+ * Kit types are available via re-exports for gradual migration.
+ */
+
 import { useCallback, useState, useMemo } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Transaction, TransactionInstruction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Transaction, TransactionInstruction } from "@solana/web3.js";
+import { ONE_RNG, type Address, toKitAddress } from "@/lib/solana";
 import { toast } from "sonner";
 import { useCraps, CrapsState } from "../useCraps";
 import { useTransaction } from "../useTransaction";
@@ -10,9 +19,11 @@ import {
   CrapsBetType,
   createPlaceCrapsBetInstruction,
   createClaimCrapsWinningsInstruction,
+  createSettleCrapsInstruction,
   CrapsGame,
   CrapsPosition,
 } from "@/lib/program";
+import { useBoard } from "../useBoard";
 
 /**
  * Represents a pending bet to be placed
@@ -20,7 +31,7 @@ import {
 export interface PendingBet {
   betType: CrapsBetType;
   point: number;
-  amount: number; // in SOL
+  amount: number; // in RNG
 }
 
 /**
@@ -29,7 +40,7 @@ export interface PendingBet {
 export interface PlaceBetOptions {
   betType: CrapsBetType;
   point?: number;
-  amount: number; // in SOL
+  amount: number; // in RNG
 }
 
 /**
@@ -70,7 +81,7 @@ export interface PlaceBetOptions {
  */
 export function useBetting() {
   // Individual hooks (re-exported for backward compatibility)
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
   const { connection } = useConnection();
   const {
     game,
@@ -85,24 +96,37 @@ export function useBetting() {
     pendingWinnings,
   } = useCraps();
   const { isLoading: txLoading } = useTransaction();
+  const { board, round, refetch: refetchBoard } = useBoard();
 
   // Local state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
 
   // Computed convenience values
   const isConnected = useMemo(() => connected && publicKey !== null, [connected, publicKey]);
+
+  // Get wallet address as Kit Address type for compatibility
+  const walletAddress: Address | null = useMemo(
+    () => publicKey ? toKitAddress(publicKey) : null,
+    [publicKey]
+  );
 
   const hasPosition = useMemo(() => position !== null, [position]);
 
   const hasPendingWinnings = useMemo(() => pendingWinnings > 0n, [pendingWinnings]);
 
-  const houseBankrollSOL = useMemo(() => {
-    return game ? Number(game.houseBankroll) / LAMPORTS_PER_SOL : 0;
+  // Check if settlement is available (round has a winning square)
+  const canSettleBets = useMemo(() => {
+    return isConnected && round?.winningSquare !== null && board?.roundId !== undefined;
+  }, [isConnected, round, board]);
+
+  const houseBankrollRNG = useMemo(() => {
+    return game ? Number(game.houseBankroll) / Number(ONE_RNG) : 0;
   }, [game]);
 
-  const pendingWinningsSOL = useMemo(() => {
-    return Number(pendingWinnings) / LAMPORTS_PER_SOL;
+  const pendingWinningsRNG = useMemo(() => {
+    return Number(pendingWinnings) / Number(ONE_RNG);
   }, [pendingWinnings]);
 
   /**
@@ -153,12 +177,12 @@ export function useBetting() {
         setIsSubmitting(true);
         toast.info("Preparing transaction...");
 
-        const amountLamports = BigInt(Math.floor(options.amount * LAMPORTS_PER_SOL));
+        const amountBaseUnits = BigInt(Math.floor(options.amount * Number(ONE_RNG)));
         const ix = createPlaceCrapsBetInstruction(
           publicKey,
           options.betType,
           options.point ?? 0,
-          amountLamports
+          amountBaseUnits
         );
 
         const transaction = new Transaction().add(ix);
@@ -167,7 +191,17 @@ export function useBetting() {
         transaction.feePayer = publicKey;
 
         toast.info("Please confirm in your wallet...");
-        const signature = await sendTransaction(transaction, connection);
+
+        // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+        if (!signTransaction) {
+          throw new Error("Wallet does not support signTransaction");
+        }
+
+        const signedTx = await signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
 
         // Validate signature
         if (!signature || typeof signature !== "string" || signature.length === 0) {
@@ -197,7 +231,7 @@ export function useBetting() {
         setIsSubmitting(false);
       }
     },
-    [publicKey, isConnected, canPlaceBet, connection, sendTransaction, refetchCraps]
+    [publicKey, isConnected, canPlaceBet, connection, signTransaction, refetchCraps]
   );
 
   /**
@@ -225,12 +259,12 @@ export function useBetting() {
 
         // Add all pending bets as instructions
         for (const bet of bets) {
-          const amountLamports = BigInt(Math.floor(bet.amount * LAMPORTS_PER_SOL));
+          const amountBaseUnits = BigInt(Math.floor(bet.amount * Number(ONE_RNG)));
           const ix = createPlaceCrapsBetInstruction(
             publicKey,
             bet.betType,
             bet.point,
-            amountLamports
+            amountBaseUnits
           );
           transaction.add(ix);
         }
@@ -240,7 +274,17 @@ export function useBetting() {
         transaction.feePayer = publicKey;
 
         toast.info("Please confirm in your wallet...");
-        const signature = await sendTransaction(transaction, connection);
+
+        // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+        if (!signTransaction) {
+          throw new Error("Wallet does not support signTransaction");
+        }
+
+        const signedTx = await signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
 
         // Validate signature
         if (!signature || typeof signature !== "string" || signature.length === 0) {
@@ -270,7 +314,7 @@ export function useBetting() {
         setIsSubmitting(false);
       }
     },
-    [publicKey, isConnected, connection, sendTransaction, refetchCraps]
+    [publicKey, isConnected, connection, signTransaction, refetchCraps]
   );
 
   /**
@@ -300,7 +344,17 @@ export function useBetting() {
       transaction.feePayer = publicKey;
 
       toast.info("Please confirm in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+
+      // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+      if (!signTransaction) {
+        throw new Error("Wallet does not support signTransaction");
+      }
+
+      const signedTx = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
       // Validate signature
       if (!signature || typeof signature !== "string" || signature.length === 0) {
@@ -314,8 +368,8 @@ export function useBetting() {
         lastValidBlockHeight,
       });
 
-      const winAmount = Number(pendingWinnings) / LAMPORTS_PER_SOL;
-      toast.success(`Claimed ${winAmount.toFixed(4)} SOL!`);
+      const winAmount = Number(pendingWinnings) / Number(ONE_RNG);
+      toast.success(`Claimed ${winAmount.toFixed(4)} RNG!`);
       refetchCraps();
       return signature;
     } catch (error) {
@@ -330,7 +384,87 @@ export function useBetting() {
     } finally {
       setIsClaiming(false);
     }
-  }, [publicKey, isConnected, pendingWinnings, connection, sendTransaction, refetchCraps]);
+  }, [publicKey, isConnected, pendingWinnings, connection, signTransaction, refetchCraps]);
+
+  /**
+   * Settle bets for the current round
+   * Uses wallet signature to allow players to settle their own bets
+   * @param customWinningSquare - Optional winning square for devnet (where slot_hash may be zero)
+   * @returns Transaction signature or null if failed
+   */
+  const settleBets = useCallback(async (customWinningSquare?: number): Promise<string | null> => {
+    if (!publicKey || !isConnected) {
+      toast.error("Please connect your wallet first");
+      return null;
+    }
+
+    // Allow custom winning square for devnet testing
+    const effectiveWinningSquare = customWinningSquare ?? round?.winningSquare;
+
+    if (effectiveWinningSquare === null || effectiveWinningSquare === undefined) {
+      toast.error("Round not ready for settlement. Try rolling first.");
+      return null;
+    }
+
+    if (!board || board.roundId === undefined) {
+      toast.error("Board state not available");
+      return null;
+    }
+
+    try {
+      setIsSettling(true);
+      toast.info("Preparing settlement...");
+
+      const winningSquare = BigInt(effectiveWinningSquare);
+      const roundId = board.roundId;
+
+      const ix = createSettleCrapsInstruction(publicKey, winningSquare, roundId);
+      const transaction = new Transaction().add(ix);
+
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = publicKey;
+
+      toast.info("Please confirm in your wallet...");
+
+      if (!signTransaction) {
+        throw new Error("Wallet does not support signTransaction");
+      }
+
+      const signedTx = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      if (!signature || typeof signature !== "string" || signature.length === 0) {
+        throw new Error("Invalid transaction signature received");
+      }
+
+      toast.info("Confirming transaction...");
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
+
+      toast.success("Bets settled successfully!");
+      refetchCraps();
+      refetchBoard();
+      return signature;
+    } catch (error) {
+      console.error("Settle bets error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      if (errorMessage.includes("User rejected")) {
+        toast.error("Transaction cancelled");
+      } else {
+        toast.error(`Failed to settle bets: ${errorMessage}`);
+      }
+      return null;
+    } finally {
+      setIsSettling(false);
+    }
+  }, [publicKey, isConnected, round, board, connection, signTransaction, refetchCraps, refetchBoard]);
 
   /**
    * Submit a custom transaction instruction
@@ -357,7 +491,16 @@ export function useBetting() {
         tx.recentBlockhash = blockhash;
         tx.feePayer = publicKey;
 
-        const signature = await sendTransaction(tx, connection);
+        // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+        if (!signTransaction) {
+          throw new Error("Wallet does not support signTransaction");
+        }
+
+        const signedTx = await signTransaction(tx);
+        const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
 
         if (!signature) {
           throw new Error("No signature returned");
@@ -380,7 +523,7 @@ export function useBetting() {
         setIsSubmitting(false);
       }
     },
-    [connection, publicKey, sendTransaction, isConnected, refetchCraps]
+    [connection, publicKey, signTransaction, isConnected, refetchCraps]
   );
 
   return {
@@ -396,21 +539,29 @@ export function useBetting() {
     epochId,
     houseBankroll,
     pendingWinnings,
+    // Board and round state for settlement
+    board,
+    round,
 
     // Computed convenience values
     isConnected,
     hasPosition,
     hasPendingWinnings,
-    houseBankrollSOL,
-    pendingWinningsSOL,
+    canSettleBets,
+    houseBankrollRNG,
+    pendingWinningsRNG,
     isSubmitting: isSubmitting || txLoading,
     isClaiming,
+    isSettling,
+    // Kit-compatible wallet address
+    walletAddress,
 
     // Utility methods
     canPlaceBet,
     placeBet,
     placeBets,
     claimWinnings,
+    settleBets,
     submitTransaction,
     refetch: refetchCraps,
   };
@@ -423,3 +574,6 @@ export type BettingSession = ReturnType<typeof useBetting>;
 
 // Re-export types for convenience
 export type { CrapsGame, CrapsPosition, CrapsState, CrapsBetType };
+
+// Re-export Kit types
+export { type Address } from "@/lib/solana";

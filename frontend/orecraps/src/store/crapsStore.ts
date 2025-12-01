@@ -6,13 +6,22 @@ import {
   CrapsPosition,
   pointToIndex,
 } from "@/lib/program";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { ONE_RNG } from "@/lib/solana";
+
+// Roll result for synchronization between mining and craps
+export interface RollResult {
+  die1: number;
+  die2: number;
+  sum: number;
+  winningSquare: number;
+  timestamp: number; // When the roll was generated
+}
 
 // Pending bet before it's sent to chain
 export interface PendingBet {
   betType: CrapsBetType;
   point: number; // 0 for bets that don't need a point
-  amount: number; // in SOL
+  amount: number; // in RNG
 }
 
 // Bet display info
@@ -31,6 +40,9 @@ interface CrapsState {
   crapsPosition: CrapsPosition | null;
   isLoading: boolean;
 
+  // Roll synchronization (shared between mining roll and craps settlement)
+  lastRollResult: RollResult | null;
+
   // Pending bets (not yet on chain)
   pendingBets: PendingBet[];
   betAmount: number; // Default amount in SOL
@@ -44,6 +56,10 @@ interface CrapsState {
   setCrapsPosition: (position: CrapsPosition | null) => void;
   setIsLoading: (loading: boolean) => void;
 
+  // Actions - Roll synchronization
+  setLastRollResult: (result: RollResult | null) => void;
+  clearLastRollResult: () => void;
+
   // Actions - Betting
   setBetAmount: (amount: number) => void;
   setSelectedBetType: (betType: CrapsBetType | null) => void;
@@ -55,10 +71,18 @@ interface CrapsState {
   // Actions - Quick bets
   addPassLineBet: (amount?: number) => void;
   addDontPassBet: (amount?: number) => void;
+  addComeBet: (point: number, amount?: number) => void;
+  addDontComeBet: (point: number, amount?: number) => void;
+  addComeOddsBet: (point: number, amount?: number) => void;
+  addDontComeOddsBet: (point: number, amount?: number) => void;
   addFieldBet: (amount?: number) => void;
   addAnySevenBet: (amount?: number) => void;
   addPlaceBet: (point: number, amount?: number) => void;
   addHardwayBet: (hardway: number, amount?: number) => void;
+  // True odds bets (0% house edge)
+  addYesBet: (sum: number, amount?: number) => void;
+  addNoBet: (sum: number, amount?: number) => void;
+  addNextBet: (sum: number, amount?: number) => void;
 }
 
 export const useCrapsStore = create<CrapsState>()(
@@ -68,6 +92,7 @@ export const useCrapsStore = create<CrapsState>()(
       crapsGame: null,
       crapsPosition: null,
       isLoading: false,
+      lastRollResult: null,
       pendingBets: [],
       betAmount: 0.01,
       selectedBetType: null,
@@ -77,6 +102,10 @@ export const useCrapsStore = create<CrapsState>()(
       setCrapsGame: (game) => set({ crapsGame: game }),
       setCrapsPosition: (position) => set({ crapsPosition: position }),
       setIsLoading: (loading) => set({ isLoading: loading }),
+
+      // Roll synchronization
+      setLastRollResult: (result) => set({ lastRollResult: result }),
+      clearLastRollResult: () => set({ lastRollResult: null }),
 
       // Betting setters
       setBetAmount: (amount) => set({ betAmount: amount }),
@@ -116,6 +145,61 @@ export const useCrapsStore = create<CrapsState>()(
             {
               betType: CrapsBetType.DontPass,
               point: 0,
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      // Come bets - require a point number
+      // Note: Current on-chain implementation places bets directly on a point
+      // (simplified from true Come bet two-phase resolution)
+      addComeBet: (point, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.Come,
+              point,
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      addDontComeBet: (point, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.DontCome,
+              point,
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      addComeOddsBet: (point, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.ComeOdds,
+              point,
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      addDontComeOddsBet: (point, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.DontComeOdds,
+              point,
               amount: amount ?? s.betAmount,
             },
           ],
@@ -173,6 +257,49 @@ export const useCrapsStore = create<CrapsState>()(
           ],
         }));
       },
+
+      // True odds bets (0% house edge)
+      // Yes bet - sum before 7 (on-chain uses Buy type)
+      addYesBet: (sum, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.Buy, // On-chain Buy = Yes
+              point: sum, // Sum 2-12 (except 7)
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      // No bet - 7 before sum (on-chain uses Lay type)
+      addNoBet: (sum, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.Lay, // On-chain Lay = No
+              point: sum, // Sum 2-12 (except 7)
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
+
+      // Next bet - single roll (on-chain uses Hop type)
+      addNextBet: (sum, amount) => {
+        set((s) => ({
+          pendingBets: [
+            ...s.pendingBets,
+            {
+              betType: CrapsBetType.Hop, // On-chain Hop = Next
+              point: sum, // Sum 2-12
+              amount: amount ?? s.betAmount,
+            },
+          ],
+        }));
+      },
     }),
     {
       name: "orecraps-craps-store",
@@ -197,6 +324,7 @@ export const useBetAmount = () => useCrapsStore((state) => state.betAmount);
 export const useSelectedBetType = () => useCrapsStore((state) => state.selectedBetType);
 export const useSelectedPoint = () => useCrapsStore((state) => state.selectedPoint);
 export const useIsLoading = () => useCrapsStore((state) => state.isLoading);
+export const useLastRollResult = () => useCrapsStore((state) => state.lastRollResult);
 
 // ============================================================================
 // DERIVED SELECTORS
@@ -217,19 +345,19 @@ export const useCurrentPoint = () =>
 export const useCurrentEpoch = () =>
   useCrapsStore((state) => state.crapsGame?.epochId ?? 0n);
 
-// Get house bankroll in SOL
+// Get house bankroll in RNG
 export const useHouseBankroll = () =>
   useCrapsStore((state) =>
     state.crapsGame
-      ? Number(state.crapsGame.houseBankroll) / LAMPORTS_PER_SOL
+      ? Number(state.crapsGame.houseBankroll) / Number(ONE_RNG)
       : 0
   );
 
-// Get pending winnings in SOL
+// Get pending winnings in RNG
 export const usePendingWinnings = () =>
   useCrapsStore((state) =>
     state.crapsPosition
-      ? Number(state.crapsPosition.pendingWinnings) / LAMPORTS_PER_SOL
+      ? Number(state.crapsPosition.pendingWinnings) / Number(ONE_RNG)
       : 0
   );
 
@@ -307,6 +435,22 @@ export const useCanPlaceBet = (betType: CrapsBetType, point?: number) =>
       case CrapsBetType.YoEleven:
       case CrapsBetType.Aces:
       case CrapsBetType.Twelve:
+        return { canBet: true };
+
+      // True odds bets (0% house edge)
+      case CrapsBetType.Buy:
+        if (!point || ![4, 5, 6, 8, 9, 10].includes(point))
+          return { canBet: false, reason: "Need valid point (4,5,6,8,9,10)" };
+        return { canBet: true };
+
+      case CrapsBetType.Lay:
+        if (!point || ![4, 5, 6, 8, 9, 10].includes(point))
+          return { canBet: false, reason: "Need valid point (4,5,6,8,9,10)" };
+        return { canBet: true };
+
+      case CrapsBetType.Hop:
+        if (!point || point < 2 || point > 12)
+          return { canBet: false, reason: "Need valid sum (2-12)" };
         return { canBet: true };
 
       default:
@@ -454,6 +598,144 @@ export function getBetDisplayInfo(betType: CrapsBetType, point?: number): BetDis
         canBet: true,
       };
 
+    // Bonus Craps
+    case CrapsBetType.BonusSmall:
+      return {
+        name: "Bonus Small",
+        payout: "34:1",
+        description: "Win if 2,3,4,5,6 all hit before 7.",
+        houseEdge: "7.76%",
+        canBet: true,
+      };
+
+    case CrapsBetType.BonusTall:
+      return {
+        name: "Bonus Tall",
+        payout: "34:1",
+        description: "Win if 8,9,10,11,12 all hit before 7.",
+        houseEdge: "7.76%",
+        canBet: true,
+      };
+
+    case CrapsBetType.BonusAll:
+      return {
+        name: "Bonus All",
+        payout: "176:1",
+        description: "Win if all 2-6 and 8-12 hit before 7.",
+        houseEdge: "7.76%",
+        canBet: true,
+      };
+
+    // Come-out only side bets
+    case CrapsBetType.FireBet:
+      return {
+        name: "Fire Bet",
+        payout: "4pts:24, 5pts:249, 6pts:999",
+        description: "Win based on unique points made. Come-out only.",
+        houseEdge: "~20%",
+        canBet: true,
+      };
+
+    case CrapsBetType.DiffDoubles:
+      return {
+        name: "Different Doubles",
+        payout: "3:4, 4:8, 5:15, 6:100",
+        description: "Win when unique doubles rolled before 7. Come-out only.",
+        houseEdge: "~18%",
+        canBet: true,
+      };
+
+    case CrapsBetType.RideTheLine:
+      return {
+        name: "Ride the Line",
+        payout: "3-11+ wins: 1-500:1",
+        description: "Win based on pass line wins before seven-out. Come-out only.",
+        houseEdge: "~15%",
+        canBet: true,
+      };
+
+    case CrapsBetType.MugsyCorner:
+      return {
+        name: "Mugsy's Corner",
+        payout: "Comeout 7:2:1, Point 7:3:1",
+        description: "Win when 7 is rolled. Come-out only.",
+        houseEdge: "~11%",
+        canBet: true,
+      };
+
+    case CrapsBetType.HotHand:
+      return {
+        name: "Hot Hand",
+        payout: "9 totals:20:1, 10:80:1",
+        description: "Hit all totals (2-6, 8-12) before 7. Come-out only.",
+        houseEdge: "~19%",
+        canBet: true,
+      };
+
+    case CrapsBetType.ReplayBet:
+      return {
+        name: "Replay Bet",
+        payout: "3x:8:1, 4x:80:1+",
+        description: "Win when same point made 3+ times. Come-out only.",
+        houseEdge: "~16%",
+        canBet: true,
+      };
+
+    case CrapsBetType.FieldersChoice:
+      return {
+        name: point === 0 ? "Fielder's (2,3,4)" : point === 1 ? "Fielder's (4,9,10)" : "Fielder's (10,11,12)",
+        payout: point === 1 ? "2:1" : "4:1",
+        description: "Single-roll: win on specific totals. Come-out only.",
+        houseEdge: "~14%",
+        canBet: true,
+      };
+
+    // True odds bets (0% house edge)
+    case CrapsBetType.Buy:
+      const buyPayout = point
+        ? point === 4 || point === 10
+          ? "2:1"
+          : point === 5 || point === 9
+          ? "3:2"
+          : "6:5"
+        : "varies";
+      return {
+        name: `Buy (Yes) ${point || ""}`,
+        payout: buyPayout,
+        description: `Win if ${point || "point"} rolls before 7. TRUE ODDS - 0% house edge!`,
+        houseEdge: "0%",
+        canBet: true,
+      };
+
+    case CrapsBetType.Lay:
+      const layPayout = point
+        ? point === 4 || point === 10
+          ? "1:2"
+          : point === 5 || point === 9
+          ? "2:3"
+          : "5:6"
+        : "varies";
+      return {
+        name: `Lay (No) ${point || ""}`,
+        payout: layPayout,
+        description: `Win if 7 rolls before ${point || "point"}. TRUE ODDS - 0% house edge!`,
+        houseEdge: "0%",
+        canBet: true,
+      };
+
+    case CrapsBetType.Hop:
+      const hopPayouts: { [key: number]: string } = {
+        2: "35:1", 3: "17:1", 4: "11:1", 5: "8:1", 6: "6.2:1",
+        7: "5:1", 8: "6.2:1", 9: "8:1", 10: "11:1", 11: "17:1", 12: "35:1"
+      };
+      return {
+        name: `Hop (Next) ${point || ""}`,
+        payout: point ? hopPayouts[point] || "?" : "varies",
+        description: `Single-roll: win if next roll is ${point || "target sum"}. TRUE ODDS - 0% house edge!`,
+        houseEdge: "0%",
+        canBet: true,
+      };
+
     default:
       return {
         name: "Unknown",
@@ -471,9 +753,9 @@ export function getBetTypeName(betType: CrapsBetType, point?: number): string {
   return info.name;
 }
 
-// Format lamports to SOL display
-export function formatLamports(lamports: bigint): string {
+// Format RNG base units to RNG display
+export function formatRngBaseUnits(amount: bigint): string {
   // Convert BigInt to Number for display purposes only
-  // Division by LAMPORTS_PER_SOL (1e9) makes the number small enough to avoid precision issues
-  return (Number(lamports) / LAMPORTS_PER_SOL).toFixed(4);
+  // Division by ONE_RNG (1e9) makes the number small enough to avoid precision issues
+  return (Number(amount) / Number(ONE_RNG)).toFixed(4);
 }

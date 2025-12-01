@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Network Store - Migrated for Anza Kit compatibility
+ *
+ * This store manages network selection (localnet/devnet) and RPC configuration.
+ * Uses legacy PublicKey for compatibility with stores that need to return PublicKey.
+ * Kit types are available via re-exports from lib/solana.
+ */
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { PublicKey } from "@solana/web3.js";

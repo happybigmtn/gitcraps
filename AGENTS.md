@@ -146,3 +146,112 @@ Validate and sanitize at system boundaries.
 ```typescript
 const validated = schema.parse(userInput);
 ```
+
+## On-Chain Only Policy
+
+**CRITICAL: The frontend must NEVER simulate or fake on-chain results.**
+
+All dice rolls, bets, and game outcomes MUST come from real on-chain transactions:
+
+1. **No Simulated Rolls**: Never use `Math.random()` to generate dice results in the frontend
+2. **No Fallback to Simulation**: If on-chain transaction fails, show an error - don't simulate
+3. **No Demo Mode**: All actions require real on-chain transactions (localnet or mainnet)
+4. **Entropy from On-Chain**: Dice results derived from entropy program's Var account values
+
+### On-Chain Entropy Cycle
+The settle-round endpoint performs a full commit-reveal cycle:
+1. **Open (new_var)**: Create Var account with commit hash of random seed
+2. **Sample**: Wait for end_at slot, then sample slot_hash
+3. **Reveal**: Submit original seed, entropy program computes final value
+4. **Result**: `value % 36` gives winning square, convert to dice: `die1 = floor(sq/6)+1`, `die2 = (sq%6)+1`
+
+### Instruction Discriminators
+```typescript
+const ORE_NEW_VAR = 19;      // ore program
+const ENTROPY_SAMPLE = 5;    // entropy program
+const ENTROPY_REVEAL = 4;    // entropy program
+```
+
+## Localnet Testing Setup
+
+Reusable pattern for setting up local testing environment:
+
+### Quick Setup (Single Command)
+```bash
+# From project root
+./scripts/localnet-setup.sh setup
+```
+
+### Manual Steps
+```bash
+# 1. Stop any existing validator
+pkill -f "solana-test-validator" || true
+
+# 2. Build the program
+cargo build-sbf --manifest-path program/Cargo.toml
+
+# 3. Start fresh validator with programs and mint accounts
+# NOTE: Entropy program required for on-chain dice rolls!
+PROGRAM_ID="JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK"
+ENTROPY_ID="3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X"
+solana-test-validator --reset \
+    --bpf-program "$PROGRAM_ID" target/deploy/ore.so \
+    --bpf-program "$ENTROPY_ID" /home/r/Coding/entropy/target/sbpf-solana-solana/release/entropy_program.so \
+    --account CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump .localnet-accounts/crap-mint.json \
+    --account RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump .localnet-accounts/rng-mint.json \
+    --ledger .localnet-ledger > .localnet-validator.log 2>&1 &
+
+# 4. Wait for validator and fund accounts
+sleep 5
+solana airdrop 100 -u localhost
+
+# 5. Build CLI and initialize program
+cargo build --release -p ore-cli
+COMMAND=initialize RPC="http://127.0.0.1:8899" KEYPAIR="$HOME/.config/solana/id.json" target/release/ore-cli
+
+# 6. Fund the house for craps betting
+cd frontend/orecraps && node fund-house.mjs
+
+# 7. Start frontend
+npm run dev
+```
+
+### Key Accounts & Mints
+
+**Program IDs:**
+- **ORE Program**: `JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK`
+- **Entropy Program**: `3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X`
+
+**Token Mints (CRITICAL - must match across all code):**
+- **RNG Mint**: `RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`
+- **CRAP Mint**: `CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`
+
+**PDAs (derived from seeds):**
+- **Board PDA**: `FKUBSpmzd2gDdoenmwJRGiZJVcXL5kFD3yeWBYtergMn`
+- **Config PDA**: `GJr1omiCV7oSqx1jNtgkgbcXYd4CLVHm1H9MmgYdX83C`
+- **Treasury PDA**: `67UWqUQ588E3EBUYH6AZgaQp7Y6JoFY5Wn3syhju4qiX`
+- **CrapsGame PDA**: `F4e4avXd1r9J2KSck7vq1srux4X8KYCE2jwTW2x4a4Gi`
+
+### Useful CLI Commands
+```bash
+# Check board state
+COMMAND=board RPC="http://127.0.0.1:8899" KEYPAIR="$HOME/.config/solana/id.json" target/release/ore-cli
+
+# Check round details
+COMMAND=round ID=0 RPC="http://127.0.0.1:8899" KEYPAIR="$HOME/.config/solana/id.json" target/release/ore-cli
+
+# Start a new round (admin only)
+COMMAND=start_round DURATION=3000 RPC="http://127.0.0.1:8899" KEYPAIR="$HOME/.config/solana/id.json" target/release/ore-cli
+
+# Deploy to mining board
+COMMAND=deploy AMOUNT=10000000 SQUARE=0 DICE=7 RPC="http://127.0.0.1:8899" KEYPAIR="$HOME/.config/solana/id.json" target/release/ore-cli
+```
+
+### Frontend Environment (.env.local)
+```bash
+NEXT_PUBLIC_SOLANA_NETWORK=localnet
+NEXT_PUBLIC_RPC_ENDPOINT=http://127.0.0.1:8899
+ADMIN_KEYPAIR_PATH=/home/r/.config/solana/id.json
+TEST_KEYPAIR_SEED=<base64-seed>
+ADMIN_API_TOKEN=localnet-test-token-12345
+```

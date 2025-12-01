@@ -1,5 +1,17 @@
 "use client";
 
+/**
+ * SolanaProvider - Wallet Adapter Configuration
+ *
+ * This provider sets up the Solana wallet adapter ecosystem.
+ * The wallet adapter libraries work seamlessly with Anza Kit via @solana/compat.
+ *
+ * Note: We intentionally keep wallet adapter + legacy web3.js here because:
+ * 1. Wallet adapters are designed for legacy Connection/PublicKey types
+ * 2. Kit's @solana/compat provides automatic conversion at boundaries
+ * 3. This is the recommended approach for gradual migration
+ */
+
 import { useMemo, type ReactNode } from "react";
 import {
   ConnectionProvider,

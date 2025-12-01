@@ -12,6 +12,8 @@ interface RoundTimerProps {
   startSlot?: bigint;
   endSlot?: bigint;
   currentSlot?: bigint;
+  /** Fallback epoch to show when mining round is 0 (e.g., craps game epoch) */
+  fallbackEpoch?: bigint;
 }
 
 export function RoundTimer({
@@ -19,7 +21,10 @@ export function RoundTimer({
   startSlot = 0n,
   endSlot = 0n,
   currentSlot = 0n,
+  fallbackEpoch = 0n,
 }: RoundTimerProps) {
+  // Use craps epoch when mining round is 0
+  const displayEpoch = roundId === 0n && fallbackEpoch > 0n ? fallbackEpoch : roundId;
   const [timeRemaining, setTimeRemaining] = useState(0);
   const lastSlotUpdateRef = useRef<number>(Date.now());
   const baseTimeRef = useRef<number>(0);
@@ -69,7 +74,7 @@ export function RoundTimer({
               EPOCH
             </span>
             <span className="font-mono font-bold text-xl text-foreground">
-              {roundId.toString().padStart(3, '0')}
+              {displayEpoch.toString().padStart(3, '0')}
             </span>
           </div>
 

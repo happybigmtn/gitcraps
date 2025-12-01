@@ -1,117 +1,146 @@
 import { NextResponse } from "next/server";
-import { spawnSync } from "child_process";
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
-import { CLI_PATH, getKeypairPath, getRpcEndpoint } from "@/lib/cliConfig";
-import { diceToSquare } from "@/lib/dice";
+import { getAdminKeypair } from "@/lib/adminKeypair";
+import { getRpcEndpoint } from "@/lib/cliConfig";
+import { ORE_PROGRAM_ID } from "@/lib/constants";
+import { toLeBytes } from "@/lib/bufferUtils";
 
 const debug = createDebugger("StartRound");
 
-// Generate a fair dice roll (two 6-sided dice) using cryptographically secure RNG
-function rollDice(): { die1: number; die2: number; sum: number; square: number } {
-  // Use crypto.getRandomValues() for secure random number generation
-  const randomBytes = new Uint32Array(2);
-  crypto.getRandomValues(randomBytes);
+// Instruction discriminator
+const START_ROUND_IX = 22;
 
-  // Convert to 1-6 range
-  const die1 = (randomBytes[0] % 6) + 1;
-  const die2 = (randomBytes[1] % 6) + 1;
-  const sum = die1 + die2;
-  const square = diceToSquare(die1, die2);
-  return { die1, die2, sum, square };
+// Default round duration in slots (~400ms per slot)
+// 1000 slots = ~6.7 minutes
+const DEFAULT_ROUND_DURATION = 1000n;
+
+function boardPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from("board")], ORE_PROGRAM_ID);
 }
 
+function configPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from("config")], ORE_PROGRAM_ID);
+}
+
+function roundPDA(roundId: bigint): [PublicKey, number] {
+  const idBytes = Buffer.alloc(8);
+  idBytes.writeBigUInt64LE(roundId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("round"), idBytes],
+    ORE_PROGRAM_ID
+  );
+}
+
+/**
+ * Start a new mining round (admin only).
+ *
+ * This API should be called when:
+ * 1. The current round has expired
+ * 2. A new round needs to be started for mining/craps
+ *
+ * Only the admin keypair can start rounds.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const duration = body.duration || 300; // Default 300 slots (~2 minutes)
+    const network = (body as { network?: string }).network || process.env.SOLANA_NETWORK || 'localnet';
+    const duration = BigInt((body as { duration?: number }).duration || Number(DEFAULT_ROUND_DURATION));
+    const rpcUrl = getRpcEndpoint(network);
 
-    // Validate duration bounds (1 second to 1 hour)
-    if (typeof duration !== 'number' || duration < 1 || duration > 3600) {
+    debug(`Starting new round on ${network} with duration ${duration} slots...`);
+
+    const connection = new Connection(rpcUrl, "confirmed");
+    const admin = getAdminKeypair();
+
+    // Get board to check current state
+    const [boardAddress] = boardPDA();
+    const boardAccount = await connection.getAccountInfo(boardAddress);
+
+    if (!boardAccount) {
       return NextResponse.json(
-        { success: false, error: "Duration must be between 1 and 3600 seconds" },
+        { success: false, error: "Board not initialized. Run ore-cli initialize first." },
         { status: 400 }
       );
     }
 
-    const network = body.network || "devnet";
-    // Simulated mode: default to true for localnet, can be overridden
-    const simulated = body.simulated !== undefined ? body.simulated : (network === "localnet");
+    const boardData = Buffer.from(boardAccount.data);
+    const roundId = boardData.readBigUInt64LE(8);
+    const startSlot = boardData.readBigUInt64LE(16);
+    const endSlot = boardData.readBigUInt64LE(24);
+    const currentSlot = await connection.getSlot();
 
-    const rpcEndpoint = getRpcEndpoint(network);
+    debug(`Current round ${roundId}: slots ${startSlot} to ${endSlot}, current: ${currentSlot}`);
 
-    debug(`Starting round with duration ${duration} slots on ${network}...`);
-    debug(`Simulated: ${simulated}`);
-
-    // Simulated mode - generate random dice roll without CLI
-    if (simulated) {
-      const roll = rollDice();
-      debug(`Simulated roll: ${roll.die1}-${roll.die2} = ${roll.sum} (square ${roll.square})`);
-
+    // Check if round is still active
+    if (currentSlot >= Number(startSlot) && currentSlot < Number(endSlot)) {
       return NextResponse.json({
         success: true,
-        message: "Simulated round completed",
-        simulated: true,
-        roll: {
-          die1: roll.die1,
-          die2: roll.die2,
-          sum: roll.sum,
-          square: roll.square,
-        },
-        signature: `sim_${Date.now().toString(36)}`,
+        message: "Round is still active",
+        roundId: roundId.toString(),
+        startSlot: startSlot.toString(),
+        endSlot: endSlot.toString(),
+        currentSlot,
+        slotsRemaining: Number(endSlot) - currentSlot,
+        alreadyActive: true,
       });
     }
 
-    const keypairPath = getKeypairPath();
+    // Build StartRound instruction
+    const [configAddress] = configPDA();
+    const [roundAddress] = roundPDA(roundId);
 
-    debug(`CLI Path: ${CLI_PATH}`);
-    debug(`Keypair: ${keypairPath}`);
-    debug(`RPC: ${rpcEndpoint}`);
+    const data = Buffer.alloc(9);
+    data[0] = START_ROUND_IX;
+    const durationBytes = toLeBytes(duration, 8);
+    durationBytes.forEach((b, i) => data[i + 1] = b);
 
-    // Execute the CLI command using spawnSync for security (no shell interpolation)
-    const result = spawnSync(CLI_PATH, [], {
-      timeout: 60000,
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        COMMAND: "start_round",
-        DURATION: String(duration),
-        RPC: rpcEndpoint,
-        KEYPAIR: keypairPath,
-      },
+    const instruction = new TransactionInstruction({
+      programId: ORE_PROGRAM_ID,
+      keys: [
+        { pubkey: admin.publicKey, isSigner: true, isWritable: true },
+        { pubkey: boardAddress, isSigner: false, isWritable: true },
+        { pubkey: configAddress, isSigner: false, isWritable: false },
+        { pubkey: roundAddress, isSigner: false, isWritable: true },
+      ],
+      data,
     });
 
-    const stdout = result.stdout || '';
-    const stderr = result.stderr || '';
+    const tx = new Transaction().add(instruction);
 
-    debug("CLI stdout:", stdout);
-    if (stderr) {
-      debug("CLI stderr:", stderr);
-    }
+    debug("Sending StartRound transaction...");
 
-    // Check for execution errors
-    if (result.status !== 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "CLI command failed",
-          details: stderr,
-        },
-        { status: 500 }
-      );
-    }
+    const signature = await sendAndConfirmTransaction(connection, tx, [admin], {
+      commitment: "confirmed",
+    });
 
-    // Parse signature from output if available
-    const sigMatch = stdout.match(/transaction: (\w+)/i) || stdout.match(/signature: (\w+)/i);
-    const signature = sigMatch ? sigMatch[1] : null;
+    debug(`StartRound transaction confirmed: ${signature}`);
+
+    // Re-fetch board to get new timing
+    const newBoardAccount = await connection.getAccountInfo(boardAddress);
+    const newBoardData = Buffer.from(newBoardAccount!.data);
+    const newStartSlot = newBoardData.readBigUInt64LE(16);
+    const newEndSlot = newBoardData.readBigUInt64LE(24);
 
     return NextResponse.json({
       success: true,
-      message: "Round started successfully",
       signature,
-      output: stdout,
+      roundId: roundId.toString(),
+      startSlot: newStartSlot.toString(),
+      endSlot: newEndSlot.toString(),
+      currentSlot: await connection.getSlot(),
+      duration: duration.toString(),
+      message: `Round ${roundId} started with duration ${duration} slots`,
     });
   } catch (error) {
+    debug("Error:", error);
     return handleApiError(error);
   }
 }

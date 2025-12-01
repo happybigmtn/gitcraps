@@ -31,6 +31,17 @@ const BET_TYPES = {
     { name: "Hard 8", selector: 'button:has-text("Hard 8")' },
     { name: "Hard 10", selector: 'button:has-text("Hard 10")' },
   ],
+  SIDE: [
+    { name: "Fire Bet", selector: 'button:has-text("Fire Bet")' },
+    { name: "Diff Doubles", selector: 'button:has-text("Diff Doubles")' },
+    { name: "Ride the Line", selector: 'button:has-text("Ride the Line")' },
+    { name: "Mugsy's Corner", selector: 'button:has-text("Mugsy\'s Corner")' },
+    { name: "Hot Hand", selector: 'button:has-text("Hot Hand")' },
+    { name: "Replay Bet", selector: 'button:has-text("Replay Bet")' },
+    { name: "Fielder's Choice 1", selector: 'button:has-text("2,3,4")' },
+    { name: "Fielder's Choice 2", selector: 'button:has-text("4,9,10")' },
+    { name: "Fielder's Choice 3", selector: 'button:has-text("10,11,12")' },
+  ],
 };
 
 // All bet types flattened for comprehensive testing
@@ -39,6 +50,7 @@ const ALL_BET_TYPES = [
   ...BET_TYPES.PLACE.map(b => ({ ...b, tab: "Place" })),
   ...BET_TYPES.HARDWAYS.map(b => ({ ...b, tab: "Hard" })),
   ...BET_TYPES.LINE.map(b => ({ ...b, tab: "Line" })),
+  ...BET_TYPES.SIDE.map(b => ({ ...b, tab: "Side" })),
 ];
 
 interface DiceResult {
@@ -48,13 +60,23 @@ interface DiceResult {
   isHardway: boolean;
 }
 
-interface SimulateRollResponse {
+interface SettleRoundResponse {
   success: boolean;
-  simulated: boolean;
-  diceResults: DiceResult;
+  diceResults: {
+    die1: number;
+    die2: number;
+    sum: number;
+    winningSquare: number;
+  };
   winningSquare: number;
-  outcomes: Record<string, { wins: boolean; reason: string }>;
-  message: string;
+  signatures?: {
+    open: string;
+    sample: string;
+    reveal: string;
+  };
+  varAddress?: string;
+  message?: string;
+  error?: string;
 }
 
 interface BetTestResult {
@@ -146,22 +168,31 @@ async function submitBetsViaAPI(
 }
 
 /**
- * Simulate a dice roll
+ * Settle the round on-chain (replaces simulate-roll)
+ * Uses the settle-round API which performs actual on-chain entropy
  */
-async function simulateRoll(page: Page): Promise<SimulateRollResponse | null> {
+async function settleRound(page: Page): Promise<DiceResult | null> {
   try {
     const response = await page.evaluate(async () => {
-      const res = await fetch("/api/simulate-roll", {
+      const res = await fetch("/api/settle-round", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ network: "localnet" }),
       });
       return await res.json();
-    });
+    }) as SettleRoundResponse;
 
-    return response as SimulateRollResponse;
+    if (!response.success || !response.diceResults) {
+      console.error("Settle round failed:", response.error || "Unknown error");
+      return null;
+    }
+
+    const { die1, die2, sum } = response.diceResults;
+    const isHardway = die1 === die2 && [4, 6, 8, 10].includes(sum);
+
+    return { die1, die2, sum, isHardway };
   } catch (error) {
-    console.error("Failed to simulate roll:", error);
+    console.error("Failed to settle round:", error);
     return null;
   }
 }
@@ -382,11 +413,11 @@ test.describe("Comprehensive Craps Bet Types E2E", () => {
           summary.rolls.push(diceResult);
           console.log(`    Result: ${diceResult.die1} + ${diceResult.die2} = ${diceResult.sum}`);
         } else {
-          // Try direct API call
-          const apiResult = await simulateRoll(page);
-          if (apiResult?.success) {
-            summary.rolls.push(apiResult.diceResults);
-            console.log(`    API Result: ${apiResult.diceResults.die1} + ${apiResult.diceResults.die2} = ${apiResult.diceResults.sum}`);
+          // Try direct API call via on-chain settlement
+          const apiResult = await settleRound(page);
+          if (apiResult) {
+            summary.rolls.push(apiResult);
+            console.log(`    API Result: ${apiResult.die1} + ${apiResult.die2} = ${apiResult.sum}`);
           }
         }
 
@@ -428,24 +459,62 @@ test.describe("Comprehensive Craps Bet Types E2E", () => {
 
     // Map bet names to betType enum values
     const betTypeMapping: Record<string, { type: number; point: number }> = {
+      // Line bets
       "Pass Line": { type: 0, point: 0 },
       "Don't Pass": { type: 1, point: 0 },
-      "Field": { type: 8, point: 0 },
-      "Any Seven": { type: 9, point: 0 },
-      "Any Craps": { type: 10, point: 0 },
-      "Yo Eleven": { type: 11, point: 0 },
+      // Place bets
+      "Place 4": { type: 8, point: 4 },
+      "Place 5": { type: 8, point: 5 },
+      "Place 6": { type: 8, point: 6 },
+      "Place 8": { type: 8, point: 8 },
+      "Place 9": { type: 8, point: 9 },
+      "Place 10": { type: 8, point: 10 },
+      // Hardways
+      "Hard 4": { type: 9, point: 4 },
+      "Hard 6": { type: 9, point: 6 },
+      "Hard 8": { type: 9, point: 8 },
+      "Hard 10": { type: 9, point: 10 },
+      // Props
+      "Field": { type: 10, point: 0 },
+      "Any Seven": { type: 11, point: 0 },
+      "Any Craps": { type: 12, point: 0 },
+      "Yo Eleven": { type: 13, point: 0 },
       "Aces": { type: 14, point: 0 },
       "Twelve": { type: 15, point: 0 },
-      "Place 4": { type: 6, point: 4 },
-      "Place 5": { type: 6, point: 5 },
-      "Place 6": { type: 6, point: 6 },
-      "Place 8": { type: 6, point: 8 },
-      "Place 9": { type: 6, point: 9 },
-      "Place 10": { type: 6, point: 10 },
-      "Hard 4": { type: 7, point: 4 },
-      "Hard 6": { type: 7, point: 6 },
-      "Hard 8": { type: 7, point: 8 },
-      "Hard 10": { type: 7, point: 10 },
+      // New Side Bets
+      "Fire Bet": { type: 19, point: 0 },
+      "Diff Doubles": { type: 20, point: 0 },
+      "Ride the Line": { type: 21, point: 0 },
+      "Mugsy's Corner": { type: 22, point: 0 },
+      "Hot Hand": { type: 23, point: 0 },
+      "Replay Bet": { type: 24, point: 0 },
+      "Fielder's Choice 1": { type: 25, point: 0 },
+      "Fielder's Choice 2": { type: 25, point: 1 },
+      "Fielder's Choice 3": { type: 25, point: 2 },
+      // True odds bets (0% house edge)
+      "Buy 4": { type: 26, point: 4 },
+      "Buy 5": { type: 26, point: 5 },
+      "Buy 6": { type: 26, point: 6 },
+      "Buy 8": { type: 26, point: 8 },
+      "Buy 9": { type: 26, point: 9 },
+      "Buy 10": { type: 26, point: 10 },
+      "Lay 4": { type: 27, point: 4 },
+      "Lay 5": { type: 27, point: 5 },
+      "Lay 6": { type: 27, point: 6 },
+      "Lay 8": { type: 27, point: 8 },
+      "Lay 9": { type: 27, point: 9 },
+      "Lay 10": { type: 27, point: 10 },
+      "Hop 2": { type: 28, point: 2 },
+      "Hop 3": { type: 28, point: 3 },
+      "Hop 4": { type: 28, point: 4 },
+      "Hop 5": { type: 28, point: 5 },
+      "Hop 6": { type: 28, point: 6 },
+      "Hop 7": { type: 28, point: 7 },
+      "Hop 8": { type: 28, point: 8 },
+      "Hop 9": { type: 28, point: 9 },
+      "Hop 10": { type: 28, point: 10 },
+      "Hop 11": { type: 28, point: 11 },
+      "Hop 12": { type: 28, point: 12 },
     };
 
     // Test each bet type individually
@@ -471,33 +540,16 @@ test.describe("Comprehensive Craps Bet Types E2E", () => {
         // Take screenshot before roll
         const beforeShot = await takeScreenshot(page, `${betName.replace(/\s+/g, "-")}-before`, 0);
 
-        // Roll dice
-        const rollResult = await simulateRoll(page);
+        // Roll dice via on-chain settlement
+        const rollResult = await settleRound(page);
 
-        if (rollResult?.success) {
-          result.diceResult = rollResult.diceResults;
+        if (rollResult) {
+          result.diceResult = rollResult;
 
-          // Get outcome for this bet type
-          const outcomeKey = betName.toLowerCase().replace(/\s+/g, "").replace("'", "");
-          // Map common bet names to outcome keys
-          const outcomeMapping: Record<string, string> = {
-            "passline": "passLine",
-            "dontpass": "dontPass",
-            "field": "field",
-            "anyseven": "anySeven",
-            "anycraps": "anyCraps",
-            "yoeleven": "yoEleven",
-            "aces": "aces",
-            "twelve": "twelve",
-          };
-
-          const key = outcomeMapping[outcomeKey] || outcomeKey;
-          if (rollResult.outcomes[key]) {
-            result.outcome = rollResult.outcomes[key].reason;
-          }
+          // Determine outcome based on dice result (on-chain evaluation is handled in settlement)
+          result.outcome = `Rolled ${rollResult.die1} + ${rollResult.die2} = ${rollResult.sum}`;
 
           console.log(`  Dice: ${result.diceResult.die1} + ${result.diceResult.die2} = ${result.diceResult.sum}`);
-          console.log(`  Outcome: ${result.outcome || "N/A"}`);
         }
 
         // Take screenshot after roll
@@ -602,22 +654,35 @@ test.describe("Multi-Epoch Comprehensive Test", () => {
       winners: string[];
     }> = [];
 
-    // All bet types to rotate through
+    // All bet types to rotate through (including new side bets)
     const allBetConfigs = [
-      { name: "Field", type: 8, point: 0 },
-      { name: "AnySeven", type: 9, point: 0 },
-      { name: "AnyCraps", type: 10, point: 0 },
-      { name: "YoEleven", type: 11, point: 0 },
+      // Props
+      { name: "Field", type: 10, point: 0 },
+      { name: "AnySeven", type: 11, point: 0 },
+      { name: "AnyCraps", type: 12, point: 0 },
+      { name: "YoEleven", type: 13, point: 0 },
       { name: "Aces", type: 14, point: 0 },
       { name: "Twelve", type: 15, point: 0 },
-      { name: "Place4", type: 6, point: 4 },
-      { name: "Place5", type: 6, point: 5 },
-      { name: "Place6", type: 6, point: 6 },
-      { name: "Place8", type: 6, point: 8 },
-      { name: "Hard4", type: 7, point: 4 },
-      { name: "Hard6", type: 7, point: 6 },
-      { name: "Hard8", type: 7, point: 8 },
-      { name: "Hard10", type: 7, point: 10 },
+      // Place bets
+      { name: "Place4", type: 8, point: 4 },
+      { name: "Place5", type: 8, point: 5 },
+      { name: "Place6", type: 8, point: 6 },
+      { name: "Place8", type: 8, point: 8 },
+      // Hardways
+      { name: "Hard4", type: 9, point: 4 },
+      { name: "Hard6", type: 9, point: 6 },
+      { name: "Hard8", type: 9, point: 8 },
+      { name: "Hard10", type: 9, point: 10 },
+      // New Side Bets (come-out only)
+      { name: "FireBet", type: 19, point: 0 },
+      { name: "DiffDoubles", type: 20, point: 0 },
+      { name: "RideTheLine", type: 21, point: 0 },
+      { name: "MugsyCorner", type: 22, point: 0 },
+      { name: "HotHand", type: 23, point: 0 },
+      { name: "ReplayBet", type: 24, point: 0 },
+      { name: "FieldersChoice0", type: 25, point: 0 },
+      { name: "FieldersChoice1", type: 25, point: 1 },
+      { name: "FieldersChoice2", type: 25, point: 2 },
     ];
 
     for (let epoch = 1; epoch <= 10; epoch++) {
@@ -650,21 +715,19 @@ test.describe("Multi-Epoch Comprehensive Test", () => {
       // Screenshot: After placing bets
       await takeScreenshot(page, "bets", epoch);
 
-      // Roll dice 2-3 times
+      // Roll dice 2-3 times via on-chain settlement
       const rollCount = Math.floor(Math.random() * 2) + 2;
       for (let r = 0; r < rollCount; r++) {
-        const rollResult = await simulateRoll(page);
+        const rollResult = await settleRound(page);
 
-        if (rollResult?.success) {
-          const sum = rollResult.diceResults.sum;
+        if (rollResult) {
+          const sum = rollResult.sum;
           result.rolls.push(sum);
-          console.log(`  Roll ${r + 1}: ${rollResult.diceResults.die1} + ${rollResult.diceResults.die2} = ${sum}`);
+          console.log(`  Roll ${r + 1}: ${rollResult.die1} + ${rollResult.die2} = ${sum}`);
 
-          // Check winners
-          for (const [key, outcome] of Object.entries(rollResult.outcomes)) {
-            if (outcome.wins && result.betTypes.some(bt => bt.toLowerCase().includes(key.toLowerCase()))) {
-              result.winners.push(`${key} (roll ${r + 1})`);
-            }
+          // Winners determined by on-chain settlement - track roll results here
+          if (sum === 7 || sum === 11) {
+            result.winners.push(`Natural ${sum} (roll ${r + 1})`);
           }
         }
 

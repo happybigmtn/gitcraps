@@ -1,22 +1,24 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+#!/usr/bin/env node
+import { createSolanaRpc, address, getProgramDerivedAddress, getAddressEncoder } from "@solana/kit";
 
 const LOCALNET_RPC = "http://127.0.0.1:8899";
 const API_BASE = "http://localhost:3000/api";
-const ORE_PROGRAM_ID = new PublicKey("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
-const TEST_PUBKEY = new PublicKey("4t2yussVn2Rn8SmubYyJpXsXdxq9CifdXDTyhZ35Q6Tq");
+const ORE_PROGRAM_ID = address("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
+const TEST_PUBKEY = address("4t2yussVn2Rn8SmubYyJpXsXdxq9CifdXDTyhZ35Q6Tq");
 
-function crapsGamePDA() {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_game")],
-    ORE_PROGRAM_ID
-  );
+async function crapsGamePDA() {
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("craps_game")],
+  });
 }
 
-function crapsPositionPDA(player) {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_position"), player.toBuffer()],
-    ORE_PROGRAM_ID
-  );
+async function crapsPositionPDA(player) {
+  const addressEncoder = getAddressEncoder();
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("craps_position"), addressEncoder.encode(player)],
+  });
 }
 
 async function simulateRoll() {
@@ -29,33 +31,33 @@ async function simulateRoll() {
 }
 
 async function main() {
-  const connection = new Connection(LOCALNET_RPC, "confirmed");
+  const rpc = createSolanaRpc(LOCALNET_RPC);
 
   console.log("============================================================");
   console.log("INVESTIGATING BETS AND RUNNING MANUAL ROLLS");
   console.log("============================================================");
 
   // Get craps game state
-  const [gameAddress] = crapsGamePDA();
-  const [positionAddress] = crapsPositionPDA(TEST_PUBKEY);
+  const [gameAddress] = await crapsGamePDA();
+  const [positionAddress] = await crapsPositionPDA(TEST_PUBKEY);
 
   console.log("\n--- On-Chain Addresses ---");
-  console.log("Craps Game PDA:", gameAddress.toBase58());
-  console.log("Player Position PDA:", positionAddress.toBase58());
+  console.log("Craps Game PDA:", gameAddress);
+  console.log("Player Position PDA:", positionAddress);
 
   // Check account balances
-  const gameAccount = await connection.getAccountInfo(gameAddress);
-  const positionAccount = await connection.getAccountInfo(positionAddress);
+  const { value: gameAccount } = await rpc.getAccountInfo(gameAddress, { encoding: "base64" }).send();
+  const { value: positionAccount } = await rpc.getAccountInfo(positionAddress, { encoding: "base64" }).send();
 
   console.log("\n--- Account Status ---");
   console.log("Game account exists:", !!gameAccount);
-  console.log("Game account size:", gameAccount?.data.length || 0, "bytes");
+  console.log("Game account size:", gameAccount ? Buffer.from(gameAccount.data[0], "base64").length : 0, "bytes");
   console.log("Position account exists:", !!positionAccount);
-  console.log("Position account size:", positionAccount?.data.length || 0, "bytes");
+  console.log("Position account size:", positionAccount ? Buffer.from(positionAccount.data[0], "base64").length : 0, "bytes");
 
   // Parse game state (basic)
   if (gameAccount) {
-    const data = gameAccount.data;
+    const data = Buffer.from(gameAccount.data[0], "base64");
     // Skip discriminator (1 byte)
     let offset = 1;
     const epochId = data.readBigUInt64LE(offset); offset += 8;
@@ -66,17 +68,14 @@ async function main() {
     console.log("Epoch ID:", epochId.toString());
     console.log("Game Phase:", gamePhase, "(0=ComeOut, 1=Point, 2=Resolved)");
     console.log("Point:", point);
-
-    // Read house bankroll (offset varies, approximately at end)
-    // This is simplified - actual parsing may differ
   }
 
   // Parse position state
   if (positionAccount) {
-    const data = positionAccount.data;
+    const data = Buffer.from(positionAccount.data[0], "base64");
     // Skip discriminator (1 byte)
     let offset = 1;
-    const player = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
+    const player = data.slice(offset, offset + 32); offset += 32;
     const epochId = data.readBigUInt64LE(offset); offset += 8;
 
     // Read bet amounts
@@ -108,7 +107,6 @@ async function main() {
     const twelve = Number(data.readBigUInt64LE(offset)) / 1e9; offset += 8;
 
     console.log("\n--- Player Position (Epoch " + epochId + ") ---");
-    console.log("Player:", player.toBase58().slice(0, 20) + "...");
     console.log("Pass Line:", Number(passLine) / 1e9, "SOL");
     console.log("Don't Pass:", Number(dontPass) / 1e9, "SOL");
     console.log("Place Bets [4,5,6,8,9,10]:", placeBets.map(x => x + " SOL").join(", "));
@@ -180,9 +178,9 @@ async function main() {
 
   // Check final position state
   console.log("\n--- Final Position State ---");
-  const finalPositionAccount = await connection.getAccountInfo(positionAddress);
+  const { value: finalPositionAccount } = await rpc.getAccountInfo(positionAddress, { encoding: "base64" }).send();
   if (finalPositionAccount) {
-    const data = finalPositionAccount.data;
+    const data = Buffer.from(finalPositionAccount.data[0], "base64");
     let offset = 1 + 32 + 8; // Skip disc + pubkey + epoch
 
     const passLine = Number(data.readBigUInt64LE(offset)) / 1e9; offset += 8;
@@ -190,9 +188,6 @@ async function main() {
 
     console.log("Pass Line remaining:", passLine, "SOL");
     console.log("Don't Pass remaining:", dontPass, "SOL");
-
-    // Check pending winnings (near end of struct)
-    // This requires knowing exact struct layout
   }
 
   console.log("\nDone! All 18 bet types were placed and 15 dice rolls executed.");

@@ -6,25 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useGameStore, useWinRate } from "@/store/gameStore";
-import { formatSol, formatCrap } from "@/lib/solana";
+import { formatRng, formatCrap } from "@/lib/solana";
 import { toast } from "sonner";
 import { User, TrendingUp, Gift, Award } from "lucide-react";
 
 interface PlayerStatsProps {
   minerData?: {
-    rewardsSol: bigint;
+    rewardsRng: bigint;
     rewardsCrap: bigint;
-    lifetimeRewardsSol: bigint;
+    lifetimeRewardsRng: bigint;
     lifetimeRewardsCrap: bigint;
     dicePrediction: number;
   } | null;
-  onClaimSol?: () => Promise<void>;
+  onClaimRng?: () => Promise<void>;
   onClaimCrap?: () => Promise<void>;
 }
 
 export function PlayerStats({
   minerData,
-  onClaimSol,
+  onClaimRng,
   onClaimCrap,
 }: PlayerStatsProps) {
   const { connected } = useWallet();
@@ -44,22 +44,22 @@ export function PlayerStats({
     );
   }
 
-  const claimableSol = minerData?.rewardsSol || 0n;
+  const claimableRng = minerData?.rewardsRng || 0n;
   const claimableCrap = minerData?.rewardsCrap || 0n;
-  const lifetimeSol = minerData?.lifetimeRewardsSol || 0n;
+  const lifetimeRng = minerData?.lifetimeRewardsRng || 0n;
   const lifetimeCrap = minerData?.lifetimeRewardsCrap || 0n;
 
-  const handleClaimSol = async () => {
-    if (!onClaimSol) {
-      toast.error("Claim SOL not available");
+  const handleClaimRng = async () => {
+    if (!onClaimRng) {
+      toast.error("Claim RNG not available");
       return;
     }
     try {
-      toast.info("Claiming SOL...");
-      await onClaimSol();
-      toast.success("SOL claimed successfully!");
+      toast.info("Claiming RNG...");
+      await onClaimRng();
+      toast.success("RNG claimed successfully!");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to claim SOL";
+      const message = error instanceof Error ? error.message : "Failed to claim RNG";
       toast.error(message);
     }
   };
@@ -97,16 +97,16 @@ export function PlayerStats({
 
           <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
             <div>
-              <div className="text-xs text-muted-foreground">SOL</div>
+              <div className="text-xs text-muted-foreground">RNG</div>
               <div className="font-mono font-bold text-chart-2">
-                {formatSol(claimableSol)}
+                {formatRng(claimableRng)}
               </div>
             </div>
             <Button
               size="sm"
               variant="outline"
-              onClick={handleClaimSol}
-              disabled={claimableSol === 0n}
+              onClick={handleClaimRng}
+              disabled={claimableRng === 0n}
             >
               Claim
             </Button>
@@ -141,8 +141,8 @@ export function PlayerStats({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-secondary/30 rounded-lg">
-              <div className="text-xs text-muted-foreground">Total SOL</div>
-              <div className="font-mono font-bold">{formatSol(lifetimeSol)}</div>
+              <div className="text-xs text-muted-foreground">Total RNG</div>
+              <div className="font-mono font-bold">{formatRng(lifetimeRng)}</div>
             </div>
             <div className="p-3 bg-secondary/30 rounded-lg">
               <div className="text-xs text-muted-foreground">Total CRAP</div>

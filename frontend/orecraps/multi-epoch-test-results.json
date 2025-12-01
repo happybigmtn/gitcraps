@@ -1,0 +1,1109 @@
+{
+  "epochs": [
+    {
+      "epochNum": 1,
+      "startTime": "2025-12-01T01:53:22.961Z",
+      "initialState": {
+        "game": {
+          "epochId": "7",
+          "point": 4,
+          "isComeOut": false,
+          "houseBankroll": "100006365533336",
+          "totalCollected": "1081466664",
+          "totalPayouts": "3074000000"
+        },
+        "position": {
+          "epochId": "7",
+          "passLine": "10000000",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "100000000",
+          "totalWon": "176000000",
+          "totalLost": "40000000"
+        },
+        "crapBalance": 900000.247733332
+      },
+      "betsPlaced": [
+        {
+          "type": "Place4",
+          "amount": 0.01,
+          "sig": "3p4j1tRsceC5iruYmDk888bSsh9oZC1P3pnw9FW1M1D64Y9c1sRMKDvzaHWtGRfTv84qiWZ2KGJrm3WY5SxwLAX6"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "4dcymPXJM2VrtTDvy3c166vS4yTMJ6awtnzKbd5RyGMN9enDNM4Vr8VUi4gSFEDY2PXYxgxgPQMducsnb6QF3xVV"
+        }
+      ],
+      "roll": {
+        "die1": 1,
+        "die2": 6,
+        "sum": 7,
+        "square": 5
+      },
+      "settlements": [
+        {
+          "sig": "429PbxPqC6yKg6YMsZH7d8Cpf6Kvz5azjaxLgGR52K7KxYf1YDuAUpoprNHLHt7ChqStzzo9UC7Lj1Q5ZQfbXmoV",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006415533336",
+          "totalCollected": "1081466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "0",
+          "totalWon": "0",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.227733332
+      },
+      "pnl": -0.02000000001862645,
+      "issues": [],
+      "endTime": "2025-12-01T01:53:30.416Z"
+    },
+    {
+      "epochNum": 2,
+      "startTime": "2025-12-01T01:53:32.418Z",
+      "initialState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006415533336",
+          "totalCollected": "1081466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "0",
+          "totalWon": "0",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.227733332
+      },
+      "betsPlaced": [
+        {
+          "type": "PassLine",
+          "amount": 0.01,
+          "sig": "Rwi8yL5WPr7Fd2KJ2Nfb8CTomGqCNpFrAh6rSxaVvUJo2gZvkEvnr8UBpGb7Ert9WAP5hJoNF6kDt8XZ4XeNjJm"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "24kgVqT7Q7gKCcEf2QsSWgtJMcjPfe2gYTo8mBxmfvC6S9NN6AbYKykduVr9mGFKyQqe49vERXB5jiyM5XVVVowu"
+        }
+      ],
+      "roll": {
+        "die1": 1,
+        "die2": 3,
+        "sum": 4,
+        "square": 2
+      },
+      "settlements": [
+        {
+          "sig": "53EMaQD1c6JQoV2XkotfC2SCiGgJUGe8vpnqgtbFMJJ7SQAJnqGD7Hu4QJwzpozwSMGxnnmrEfVQn75D7YBB1XEy",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 4,
+          "isComeOut": false,
+          "houseBankroll": "100006415533336",
+          "totalCollected": "1101466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "10000000",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "20000000",
+          "totalWagered": "20000000",
+          "totalWon": "20000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.207733332
+      },
+      "pnl": -1.8626451075975936e-11,
+      "issues": [],
+      "endTime": "2025-12-01T01:53:39.842Z"
+    },
+    {
+      "epochNum": 3,
+      "startTime": "2025-12-01T01:53:41.844Z",
+      "initialState": {
+        "game": {
+          "epochId": "8",
+          "point": 4,
+          "isComeOut": false,
+          "houseBankroll": "100006395533336",
+          "totalCollected": "1121466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "10000000",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "20000000",
+          "totalWon": "20000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.227733332
+      },
+      "betsPlaced": [
+        {
+          "type": "Place4",
+          "amount": 0.01,
+          "sig": "mKioUxf4Y9t6NcUL9Atr9bQmzS6ohsHMv4r23oBonTfJ14kEB597ZQJJfiDG8F3MsTBPZ4b8TcDTYbNoLFVroS6"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "4VcFXQpXAD9jyXHCE2VDxqzBtSX4EKC59AXFvkLe4aAqDoaD1ufNQxkhEBdwEkTMepfYkgVV2BK1MpJ5vNQngNY3"
+        }
+      ],
+      "roll": {
+        "die1": 3,
+        "die2": 6,
+        "sum": 9,
+        "square": 17
+      },
+      "settlements": [
+        {
+          "sig": "xsw4KJWRjG78nRQ5DinRyAr2EcGvF25Pz79WTC8eVi7ivKkjUYB1e6ynxchuBBv6zNDeU447WD25k7h8Y2mCSYh",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 4,
+          "isComeOut": false,
+          "houseBankroll": "100006395533336",
+          "totalCollected": "1141466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "10000000",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "10000000",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "20000000",
+          "totalWagered": "40000000",
+          "totalWon": "40000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.207733332
+      },
+      "pnl": -1.8626451075975936e-11,
+      "issues": [],
+      "endTime": "2025-12-01T01:53:49.931Z"
+    },
+    {
+      "epochNum": 4,
+      "startTime": "2025-12-01T01:53:51.933Z",
+      "initialState": {
+        "game": {
+          "epochId": "8",
+          "point": 4,
+          "isComeOut": false,
+          "houseBankroll": "100006375533336",
+          "totalCollected": "1161466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "10000000",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "10000000",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "40000000",
+          "totalWon": "40000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.227733332
+      },
+      "betsPlaced": [
+        {
+          "type": "Place4",
+          "amount": 0.01,
+          "sig": "4Gm5E8Mw4J19bEpHxADmXXLexTRPSLLg1HaLxdQF67Xge4QedFf58bfa7i1pozLsJo8QwGsmK5vWGJo2LMgHcVWs"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "2AJhP3r5NkkKGuLTgcYZknh4tKxE1g6VM5VxBuAr1NBvMmjaMAaWXE6Vs9ncpFb5M3eUb56KVAv1sftpQKKzHCPj"
+        }
+      ],
+      "roll": {
+        "die1": 1,
+        "die2": 3,
+        "sum": 4,
+        "square": 2
+      },
+      "settlements": [
+        {
+          "sig": "482jaNtR6JrzwXZdTjHQdUnN4YQ6XaJagEacS9HpXQ5pyCdPnZRU2K9rAvKR4Req3MXnF5p7RVNbcC3m8jWS8gu1",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006299533336",
+          "totalCollected": "1257466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "96000000",
+          "totalWagered": "60000000",
+          "totalWon": "136000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.207733332
+      },
+      "pnl": 0.07599999998137355,
+      "issues": [],
+      "endTime": "2025-12-01T01:54:00.232Z"
+    },
+    {
+      "epochNum": 5,
+      "startTime": "2025-12-01T01:54:02.233Z",
+      "initialState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006203533336",
+          "totalCollected": "1353466664",
+          "totalPayouts": "3104000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "60000000",
+          "totalWon": "136000000",
+          "totalLost": "30000000"
+        },
+        "crapBalance": 900000.303733332
+      },
+      "betsPlaced": [
+        {
+          "type": "PassLine",
+          "amount": 0.01,
+          "sig": "4CenKbTWkhAGbZ4aq8qMqFGfxSQ1FWChw6PA4Gmrrt2ZfQ16m2TCfq6xco34VM4xwEJrU2xF6Dybu2tBMmizz6nG"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "3aBnx8AwUE3RZQqxRb3FpiRBMu8eRqVXMVHhzc8pgqGpvuq6f1FvihzPSvLDBwawKescscCVPoiPYHHC19cRAWmu"
+        }
+      ],
+      "roll": {
+        "die1": 1,
+        "die2": 6,
+        "sum": 7,
+        "square": 5
+      },
+      "settlements": [
+        {
+          "sig": "3aaR1iDXcX5VwisZu2J3aGij39LS4GKtuduF7qc3KWEuURbeFemy4MLua2sNzYtm5UafBP5Xcv1hwpq98K4FPb5f",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006213533336",
+          "totalCollected": "1373466664",
+          "totalPayouts": "3114000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "20000000",
+          "totalWagered": "80000000",
+          "totalWon": "156000000",
+          "totalLost": "40000000"
+        },
+        "crapBalance": 900000.283733332
+      },
+      "pnl": -1.8626451075975936e-11,
+      "issues": [],
+      "endTime": "2025-12-01T01:54:09.276Z"
+    },
+    {
+      "epochNum": 6,
+      "startTime": "2025-12-01T01:54:11.278Z",
+      "initialState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006193533336",
+          "totalCollected": "1393466664",
+          "totalPayouts": "3114000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "0",
+          "totalWagered": "80000000",
+          "totalWon": "156000000",
+          "totalLost": "40000000"
+        },
+        "crapBalance": 900000.303733332
+      },
+      "betsPlaced": [
+        {
+          "type": "PassLine",
+          "amount": 0.01,
+          "sig": "2JLQsyShnQDBiVtQp5uVpUxWNgGAUDN2MPKkGYsU12PTE6qo3iBDeWYMagtwhXhoXip3g9UZNyv5ByCoJiZZRRd1"
+        },
+        {
+          "type": "Field",
+          "amount": 0.01,
+          "sig": "uP3jpMczof98j69BUkqehxomYfQuSSo3kBbrRPsSHUvag3NYqAm9sdh6CKFpYbKCCr4jRo81vurdb6nmpvSdWbj"
+        }
+      ],
+      "roll": {
+        "die1": 6,
+        "die2": 5,
+        "sum": 11,
+        "square": 34
+      },
+      "settlements": [
+        {
+          "sig": "CZNsT6QwRoVwzPt85XqK4KjZAbLESoanyLXJ1ZAAVjdenxPnNVFj5EhJu4gwkLDJjK3hc7X1oab21gvN3CxoP2p",
+          "success": true
+        }
+      ],
+      "finalState": {
+        "game": {
+          "epochId": "8",
+          "point": 0,
+          "isComeOut": true,
+          "houseBankroll": "100006173533336",
+          "totalCollected": "1433466664",
+          "totalPayouts": "3114000000"
+        },
+        "position": {
+          "epochId": "8",
+          "passLine": "0",
+          "dontPass": "0",
+          "passOdds": "0",
+          "dontPassOdds": "0",
+          "comeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "comeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "dontComeOdds": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "placeBets": [
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "hardways": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ],
+          "fieldBet": "0",
+          "anySeven": "0",
+          "anyCraps": "0",
+          "yoEleven": "0",
+          "aces": "0",
+          "twelve": "0",
+          "pendingWinnings": "40000000",
+          "totalWagered": "100000000",
+          "totalWon": "196000000",
+          "totalLost": "40000000"
+        },
+        "crapBalance": 900000.283733332
+      },
+      "pnl": 0.01999999998137355,
+      "issues": [],
+      "endTime": "2025-12-01T01:54:18.479Z"
+    }
+  ],
+  "issues": [
+    {
+      "category": "STATE_MISMATCH",
+      "description": "Field bet not recorded in position",
+      "details": {
+        "expected": "10000000",
+        "actual": "0"
+      },
+      "timestamp": "2025-12-01T01:54:14.723Z"
+    }
+  ],
+  "totalBets": 12,
+  "totalWins": 7,
+  "totalLosses": 3,
+  "totalPnL": 0.0759999998882413,
+  "passLineBets": {
+    "placed": 3,
+    "won": 3,
+    "lost": 1,
+    "pending": 1
+  },
+  "fieldBets": {
+    "placed": 6,
+    "won": 4,
+    "lost": 2
+  },
+  "propBets": {
+    "placed": 0,
+    "won": 0,
+    "lost": 0
+  }
+}

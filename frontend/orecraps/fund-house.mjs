@@ -1,14 +1,48 @@
-import { Connection, Keypair, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+#!/usr/bin/env node
+import {
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  address,
+  getProgramDerivedAddress,
+  getAddressEncoder,
+  createKeyPairSignerFromBytes,
+  pipe,
+  createTransactionMessage,
+  setTransactionMessageFeePayerSigner,
+  setTransactionMessageLifetimeUsingBlockhash,
+  appendTransactionMessageInstruction,
+  signTransactionMessageWithSigners,
+  getSignatureFromTransaction,
+  sendAndConfirmTransactionFactory,
+  AccountRole,
+} from "@solana/kit";
+import {
+  TOKEN_PROGRAM_ADDRESS,
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  findAssociatedTokenPda,
+  getMintToInstruction,
+  getCreateAssociatedTokenIdempotentInstruction,
+} from "@solana-program/token";
+import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
 import fs from "fs";
 
 const LOCALNET_RPC = "http://127.0.0.1:8899";
-const ORE_PROGRAM_ID = new PublicKey("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
+const LOCALNET_RPC_WS = "ws://127.0.0.1:8900";
+const ORE_PROGRAM_ID = address("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
+const CRAP_MINT = address("CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump");
 
-function crapsGamePDA() {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_game")],
-    ORE_PROGRAM_ID
-  );
+async function crapsGamePDA() {
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("craps_game")],
+  });
+}
+
+async function crapsVaultPDA() {
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("craps_vault")],
+  });
 }
 
 function toLeBytes(n, len) {
@@ -19,78 +53,201 @@ function toLeBytes(n, len) {
   return arr;
 }
 
-// Create FundHouse instruction
-// instruction discriminator 26 = FundCrapsHouse
-function createFundHouseInstruction(signer, crapsGameAddress, amount) {
+// Create FundCrapsHouse instruction with all 9 required accounts
+function createFundCrapsHouseInstruction(
+  signer,
+  crapsGameAddress,
+  crapsVaultAddress,
+  signerCrapAta,
+  vaultCrapAta,
+  crapMint,
+  amount
+) {
   const data = new Uint8Array(9);
   data[0] = 26; // FundCrapsHouse discriminator
   data.set(toLeBytes(BigInt(amount), 8), 1);
 
   return {
-    programId: ORE_PROGRAM_ID,
-    keys: [
-      { pubkey: signer, isSigner: true, isWritable: true },
-      { pubkey: crapsGameAddress, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    programAddress: ORE_PROGRAM_ID,
+    accounts: [
+      { address: signer.address, role: AccountRole.WRITABLE_SIGNER, signer },
+      { address: crapsGameAddress, role: AccountRole.WRITABLE },
+      { address: crapsVaultAddress, role: AccountRole.READONLY },
+      { address: signerCrapAta, role: AccountRole.WRITABLE },
+      { address: vaultCrapAta, role: AccountRole.WRITABLE },
+      { address: crapMint, role: AccountRole.READONLY },
+      { address: SYSTEM_PROGRAM_ADDRESS, role: AccountRole.READONLY },
+      { address: TOKEN_PROGRAM_ADDRESS, role: AccountRole.READONLY },
+      { address: ASSOCIATED_TOKEN_PROGRAM_ADDRESS, role: AccountRole.READONLY },
     ],
-    data: Buffer.from(data),
+    data,
   };
 }
 
 async function main() {
-  const connection = new Connection(LOCALNET_RPC, "confirmed");
+  const rpc = createSolanaRpc(LOCALNET_RPC);
+  const rpcSubscriptions = createSolanaRpcSubscriptions(LOCALNET_RPC_WS);
+  const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
 
   // Load admin keypair
   const keypairPath = "/home/r/.config/solana/id.json";
   const keypairData = JSON.parse(fs.readFileSync(keypairPath, "utf-8"));
-  const admin = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+  const admin = await createKeyPairSignerFromBytes(Uint8Array.from(keypairData));
 
-  const [crapsGameAddress] = crapsGamePDA();
+  const [crapsGameAddress] = await crapsGamePDA();
+  const [crapsVaultAddress] = await crapsVaultPDA();
+
+  // Get ATAs using findAssociatedTokenPda
+  const [signerCrapAta] = await findAssociatedTokenPda({
+    mint: CRAP_MINT,
+    owner: admin.address,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  });
+  const [vaultCrapAta] = await findAssociatedTokenPda({
+    mint: CRAP_MINT,
+    owner: crapsVaultAddress,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  });
 
   console.log("============================================================");
   console.log("FUNDING CRAPS HOUSE");
   console.log("============================================================");
-  console.log("Admin:", admin.publicKey.toBase58());
-  console.log("CrapsGame PDA:", crapsGameAddress.toBase58());
+  console.log("Admin:", admin.address);
+  console.log("CrapsGame PDA:", crapsGameAddress);
+  console.log("CrapsVault PDA:", crapsVaultAddress);
+  console.log("Admin CRAP ATA:", signerCrapAta);
+  console.log("Vault CRAP ATA:", vaultCrapAta);
 
-  // Check if CrapsGame exists
-  const crapsGameAccount = await connection.getAccountInfo(crapsGameAddress);
-  if (!crapsGameAccount) {
-    console.log("\nCrapsGame account does not exist. Creating via first bet...");
-    // The craps game is initialized on first bet placement
+  // Step 1: Create admin's CRAP ATA if needed
+  const adminAtaInfo = await rpc.getAccountInfo(signerCrapAta, { encoding: "base64" }).send();
+  if (!adminAtaInfo.value) {
+    console.log("\nCreating admin CRAP ATA...");
+    const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
+
+    const createAtaIx = getCreateAssociatedTokenIdempotentInstruction({
+      payer: admin,
+      owner: admin.address,
+      mint: CRAP_MINT,
+      ata: signerCrapAta,
+    });
+
+    const tx = pipe(
+      createTransactionMessage({ version: 0 }),
+      (m) => setTransactionMessageFeePayerSigner(admin, m),
+      (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, m),
+      (m) => appendTransactionMessageInstruction(createAtaIx, m),
+    );
+
+    const signedTx = await signTransactionMessageWithSigners(tx);
+    const sig = getSignatureFromTransaction(signedTx);
+    await sendAndConfirmTransaction(signedTx, { commitment: "confirmed" });
+    console.log("  Created admin ATA! Sig:", sig.slice(0, 20) + "...");
   } else {
-    console.log("\nCrapsGame account exists, data length:", crapsGameAccount.data.length);
+    console.log("\nAdmin CRAP ATA already exists");
   }
 
-  // Fund the house with 50 SOL
-  const amount = 50 * LAMPORTS_PER_SOL;
-  console.log("\nFunding house with 50 SOL...");
+  // Step 2: Mint CRAP tokens to admin (admin is mint authority)
+  const ONE_CRAP = 1_000_000_000n; // 9 decimals
+  const mintAmount = 1_000_000n * ONE_CRAP; // 1 million CRAP
 
-  const fundIx = createFundHouseInstruction(admin.publicKey, crapsGameAddress, amount);
-  const transaction = new Transaction().add(fundIx);
-  transaction.feePayer = admin.publicKey;
-  transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  console.log("\nMinting 1,000,000 CRAP tokens to admin...");
+  const { value: latestBlockhash1 } = await rpc.getLatestBlockhash().send();
+
+  const mintIx = getMintToInstruction({
+    mint: CRAP_MINT,
+    token: signerCrapAta,
+    mintAuthority: admin,
+    amount: mintAmount,
+  });
+
+  const mintTx = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(admin, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash1, m),
+    (m) => appendTransactionMessageInstruction(mintIx, m),
+  );
 
   try {
-    transaction.sign(admin);
-    const sig = await connection.sendRawTransaction(transaction.serialize());
-    await connection.confirmTransaction(sig, "confirmed");
-    console.log("  Funded! Sig:", sig.slice(0, 30) + "...");
+    const signedMintTx = await signTransactionMessageWithSigners(mintTx);
+    const mintSig = getSignatureFromTransaction(signedMintTx);
+    await sendAndConfirmTransaction(signedMintTx, { commitment: "confirmed" });
+    console.log("  Minted! Sig:", mintSig.slice(0, 20) + "...");
   } catch (e) {
-    console.log("  Error:", e.message?.slice(0, 200) || e.toString());
+    console.log("  Mint error (may already have tokens):", e.message?.slice(0, 100));
   }
 
-  // Check house balance after
-  const crapsGameAfter = await connection.getAccountInfo(crapsGameAddress);
-  if (crapsGameAfter) {
-    console.log("\nCrapsGame account balance:", crapsGameAfter.lamports / LAMPORTS_PER_SOL, "SOL");
+  // Check admin CRAP balance
+  const adminBalance = await rpc.getTokenAccountBalance(signerCrapAta).send();
+  console.log("  Admin CRAP balance:", adminBalance.value.uiAmount, "CRAP");
+
+  // Step 3: Check if CrapsGame exists
+  const crapsGameAccount = await rpc.getAccountInfo(crapsGameAddress, { encoding: "base64" }).send();
+  if (!crapsGameAccount.value) {
+    console.log("\nCrapsGame account does not exist. Will be created by FundCrapsHouse.");
+  } else {
+    console.log("\nCrapsGame account exists, data length:", crapsGameAccount.value.data[0].length);
+  }
+
+  // Step 4: Fund the house with 100,000 CRAP tokens
+  const fundAmount = 100_000n * ONE_CRAP;
+  console.log("\nFunding craps house with 100,000 CRAP tokens...");
+
+  const { value: latestBlockhash2 } = await rpc.getLatestBlockhash().send();
+
+  const fundIx = createFundCrapsHouseInstruction(
+    admin,
+    crapsGameAddress,
+    crapsVaultAddress,
+    signerCrapAta,
+    vaultCrapAta,
+    CRAP_MINT,
+    fundAmount
+  );
+
+  const fundTx = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(admin, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash2, m),
+    (m) => appendTransactionMessageInstruction(fundIx, m),
+  );
+
+  try {
+    const signedFundTx = await signTransactionMessageWithSigners(fundTx);
+    const sig = getSignatureFromTransaction(signedFundTx);
+    await sendAndConfirmTransaction(signedFundTx, { commitment: "confirmed" });
+    console.log("  Funded house! Sig:", sig.slice(0, 20) + "...");
+  } catch (e) {
+    console.log("  Error:", e.message?.slice(0, 300) || e.toString());
+    if (e.logs) {
+      console.log("  Logs:", e.logs.slice(-5).join("\n       "));
+    }
+  }
+
+  // Step 5: Verify accounts after funding
+  const crapsGameAfter = await rpc.getAccountInfo(crapsGameAddress, { encoding: "base64" }).send();
+  if (crapsGameAfter.value) {
+    console.log("\nCrapsGame account created!");
+    console.log("  Owner:", crapsGameAfter.value.owner);
+    console.log("  Data length:", Buffer.from(crapsGameAfter.value.data[0], "base64").length, "bytes");
+    console.log("  Lamports:", crapsGameAfter.value.lamports);
 
     // Parse house_bankroll from account data
-    // CrapsGame layout: disc(1) + epoch_id(8) + game_phase(1) + point(1) + come_points(6) +
-    //                   house_bankroll(8) + reserved(8) + total_bet(8)
-    const data = crapsGameAfter.data;
-    const houseBankroll = Number(data.readBigUInt64LE(17)) / LAMPORTS_PER_SOL;
-    console.log("House bankroll:", houseBankroll, "SOL");
+    const data = Buffer.from(crapsGameAfter.value.data[0], "base64");
+    if (data.length >= 35) {
+      const houseBankroll = Number(data.readBigUInt64LE(19)) / Number(ONE_CRAP);
+      console.log("  House bankroll:", houseBankroll.toLocaleString(), "CRAP");
+    }
+  } else {
+    console.log("\nCrapsGame account NOT created!");
+  }
+
+  // Check vault token account
+  const vaultAtaInfo = await rpc.getAccountInfo(vaultCrapAta, { encoding: "base64" }).send();
+  if (vaultAtaInfo.value) {
+    const vaultBalance = await rpc.getTokenAccountBalance(vaultCrapAta).send();
+    console.log("\nVault CRAP balance:", vaultBalance.value.uiAmount?.toLocaleString(), "CRAP");
+  } else {
+    console.log("\nVault CRAP ATA not created yet");
   }
 
   console.log("\n============================================================");

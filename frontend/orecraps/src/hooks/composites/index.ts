@@ -25,3 +25,9 @@ export type {
   CrapsState,
   CrapsBetType,
 } from "./useBetting";
+
+export { useDelegatedBetting } from "./useDelegatedBetting";
+export type { DelegatedBettingSession } from "./useDelegatedBetting";
+
+// Re-export Kit types for convenience
+export { type Address } from "@/lib/solana";

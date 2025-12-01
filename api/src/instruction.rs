@@ -36,6 +36,10 @@ pub enum OreInstruction {
     SettleCraps = 24,
     ClaimCrapsWinnings = 25,
     FundCrapsHouse = 26,
+
+    // Migration
+    MigrateRound = 27,
+    MigrateMiner = 28,
 }
 
 #[repr(C)]
@@ -242,6 +246,25 @@ pub enum CrapsBetType {
     YoEleven = 13,
     Aces = 14,
     Twelve = 15,
+
+    // Bonus Craps (multi-roll side bets)
+    BonusSmall = 16,
+    BonusTall = 17,
+    BonusAll = 18,
+
+    // Come-out only side bets (point specified for FieldersChoice)
+    FireBet = 19,
+    DiffDoubles = 20,
+    RideTheLine = 21,
+    MugsyCorner = 22,
+    HotHand = 23,
+    ReplayBet = 24,
+    FieldersChoice = 25, // point = 0,1,2 for three sub-bets
+
+    // True odds bets (0% house edge)
+    Buy = 26,  // "Yes" bet - point before 7, pays true odds
+    Lay = 27,  // "No" bet - 7 before point, pays inverse true odds
+    Hop = 28,  // "Next" bet - single-roll bet on specific dice sum (2-12), true odds
 }
 
 /// Place a craps bet.
@@ -283,3 +306,19 @@ instruction!(OreInstruction, PlaceCrapsBet);
 instruction!(OreInstruction, SettleCraps);
 instruction!(OreInstruction, ClaimCrapsWinnings);
 instruction!(OreInstruction, FundCrapsHouse);
+instruction!(OreInstruction, MigrateRound);
+
+/// Migrate a Round account to the new struct size (admin only).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct MigrateRound {
+    /// The round ID to migrate.
+    pub round_id: [u8; 8],
+}
+
+instruction!(OreInstruction, MigrateMiner);
+
+/// Migrate a Miner account to the new struct size.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct MigrateMiner {}

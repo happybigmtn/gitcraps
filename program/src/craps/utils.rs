@@ -135,6 +135,29 @@ pub fn hardway_to_index(hardway: u8) -> Option<usize> {
     }
 }
 
+/// Convert dice sum (2-12) to array index (0-10) for Yes/No/Next bets.
+pub fn sum_to_index(sum: u8) -> Option<usize> {
+    if sum >= 2 && sum <= 12 {
+        Some((sum - 2) as usize)
+    } else {
+        None
+    }
+}
+
+/// Convert array index (0-10) to dice sum (2-12).
+pub fn index_to_sum(index: usize) -> Option<u8> {
+    if index <= 10 {
+        Some((index + 2) as u8)
+    } else {
+        None
+    }
+}
+
+/// Check if sum is valid for Yes/No bets (2-12 except 7).
+pub fn is_valid_yes_no_sum(sum: u8) -> bool {
+    sum >= 2 && sum <= 12 && sum != 7
+}
+
 /// Calculate payout for a winning bet.
 /// Returns the amount won (not including original bet).
 pub fn calculate_payout(bet_amount: u64, payout_num: u64, payout_den: u64) -> u64 {

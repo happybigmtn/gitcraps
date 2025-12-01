@@ -25,13 +25,13 @@ pub struct CrapsGame {
     /// The round ID when this epoch started.
     pub epoch_start_round: u64,
 
-    /// The SOL balance available as house bankroll for fixed-odds payouts.
+    /// The CRAP token balance available as house bankroll for fixed-odds payouts.
     pub house_bankroll: u64,
 
-    /// Total SOL paid out in craps winnings.
+    /// Total CRAP tokens paid out in craps winnings.
     pub total_payouts: u64,
 
-    /// Total SOL collected from losing craps bets.
+    /// Total CRAP tokens collected from losing craps bets.
     pub total_collected: u64,
 
     /// Total potential payouts reserved for pending bets

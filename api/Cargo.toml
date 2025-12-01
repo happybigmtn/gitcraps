@@ -28,3 +28,4 @@ ts-rs = { version = "7", optional = true }
 [features]
 default = []
 ts-bindings = ["ts-rs"]
+devnet = []  # Use devnet-specific mint addresses

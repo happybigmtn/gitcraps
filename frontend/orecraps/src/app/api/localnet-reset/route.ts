@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-} from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import { createDebugger } from "@/lib/debug";
-import { validateAdminToken } from "@/lib/adminAuth";
-import { ORE_PROGRAM_ID, ENTROPY_PROGRAM_ID } from "@/lib/constants";
+import { ORE_PROGRAM_ID } from "@/lib/constants";
 import { loadTestKeypair } from "@/lib/testKeypair";
 import { LOCALNET_RPC } from "@/lib/cliConfig";
 import { validateLocalnetOnly } from "@/lib/middleware";
+import { readU64FromBuffer } from "@/lib/bufferUtils";
+import { calculateWinningSquareFromHash, squareToDice } from "@/lib/dice";
 import crypto from "crypto";
-import { spawnSync } from "child_process";
-import * as fs from "fs";
 
 const debug = createDebugger("LocalnetReset");
 
@@ -22,251 +17,212 @@ function boardPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from("board")], ORE_PROGRAM_ID);
 }
 
-function varPDA(authority: PublicKey, id: bigint): [PublicKey, number] {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(id);
+function roundPDA(roundId: bigint): [PublicKey, number] {
+  const idBytes = Buffer.alloc(8);
+  idBytes.writeBigUInt64LE(roundId);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("var"), authority.toBuffer(), buf],
-    ENTROPY_PROGRAM_ID
+    [Buffer.from("round"), idBytes],
+    ORE_PROGRAM_ID
   );
 }
 
-/**
- * Generate random bytes for slot hash simulation
- */
-function generateRandomSlotHash(): Buffer {
-  return crypto.randomBytes(32);
-}
+// Round account layout offsets
+// 8 (discriminator) + 8 (id) + 36*8 (deployed[36]) = 8 + 8 + 288 = 304
+const ROUND_SLOT_HASH_OFFSET = 304;
+const BOARD_ROUND_ID_OFFSET = 8;
 
 /**
- * Calculate dice result from slot hash (matches on-chain logic)
+ * Generate a slot hash that produces a specific winning square.
+ * This allows testing specific dice outcomes.
  */
-function calculateDiceFromSlotHash(slotHash: Buffer): { die1: number; die2: number; sum: number; winningSquare: number } {
-  // Use keccak-like hash (SHA3-256 as approximation)
-  const hash = crypto.createHash("sha3-256").update(slotHash).digest();
-  const sample = hash.readBigUInt64LE(0);
-
-  // Board size is 36 (6x6 dice grid)
-  const boardSize = 36n;
-  const maxValid = (BigInt("0xFFFFFFFFFFFFFFFF") / boardSize) * boardSize;
-
-  let winningSquare: number;
-  if (sample < maxValid) {
-    winningSquare = Number(sample % boardSize);
-  } else {
-    // Fallback for edge case
-    const hash2 = crypto.createHash("sha3-256").update(hash).digest();
-    const sample2 = hash2.readBigUInt64LE(0);
-    winningSquare = Number(sample2 % boardSize);
+function generateSlotHashForWinningSquare(targetSquare?: number): { slotHash: Buffer; winningSquare: number } {
+  if (targetSquare !== undefined && targetSquare >= 0 && targetSquare < 36) {
+    // Generate random hashes until we get one that produces the target square
+    for (let attempt = 0; attempt < 10000; attempt++) {
+      const slotHash = crypto.randomBytes(32);
+      const winningSquare = calculateWinningSquareFromHash(slotHash);
+      if (winningSquare === targetSquare) {
+        return { slotHash, winningSquare };
+      }
+    }
+    // Fallback if we couldn't find one
+    debug(`Could not find hash for target square ${targetSquare}, using random`);
   }
 
-  // Convert square to dice
-  const { squareToDice } = require('@/lib/dice');
-  const [die1, die2] = squareToDice(winningSquare);
-  const sum = die1 + die2;
-
-  return { die1, die2, sum, winningSquare };
+  // Generate random slot hash
+  const slotHash = crypto.randomBytes(32);
+  const winningSquare = calculateWinningSquareFromHash(slotHash);
+  return { slotHash, winningSquare };
 }
 
 /**
- * Create a Var account with valid entropy data using write-account
- * This is a TESTING-ONLY approach for localnet
+ * Write slot_hash directly into the Round account using fetch to localnet RPC.
+ * Uses Solana's setAccount RPC method which is only available on localnet/devnet.
  */
-async function setupMockVarAccount(
-  connection: Connection,
-  payer: Keypair,
-  varAddress: PublicKey,
-  authority: PublicKey,
-  slotHash: Buffer
+async function injectRngIntoRound(
+  roundAddress: PublicKey,
+  roundData: Buffer,
+  slotHash: Buffer,
+  owner: PublicKey,
+  lamports: number
 ): Promise<boolean> {
   try {
-    // Check if Var account exists
-    const varAccount = await connection.getAccountInfo(varAddress);
+    // Create a copy of the round data and inject the slot_hash
+    const newData = Buffer.from(roundData);
+    slotHash.copy(newData, ROUND_SLOT_HASH_OFFSET);
 
-    if (!varAccount) {
-      debug("Var account doesn't exist - need to create it first via new_var CLI command");
+    debug(`Injecting RNG into Round account ${roundAddress.toBase58()}`);
+    debug(`  slot_hash offset: ${ROUND_SLOT_HASH_OFFSET}`);
+    debug(`  slot_hash: ${slotHash.toString("hex").slice(0, 32)}...`);
+
+    // Use setAccount RPC method (localnet only)
+    const response = await fetch(LOCALNET_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'setAccount',
+        params: [
+          roundAddress.toBase58(),
+          {
+            lamports,
+            data: [newData.toString('base64'), 'base64'],
+            owner: owner.toBase58(),
+            executable: false,
+            rentEpoch: 0,
+          }
+        ]
+      })
+    });
+
+    const result = await response.json() as { result?: boolean; error?: { message: string } };
+
+    if (result.error) {
+      debug("RPC setAccount error:", result.error.message);
       return false;
     }
 
-    // The Var account structure (from entropy-api):
-    // - authority: Pubkey (32 bytes)
-    // - id: u64 (8 bytes)
-    // - provider: Pubkey (32 bytes)
-    // - commit: [u8; 32] (32 bytes)
-    // - seed: [u8; 32] (32 bytes)
-    // - slot_hash: [u8; 32] (32 bytes)
-    // - value: [u8; 32] (32 bytes)
-    // - samples: u64 (8 bytes)
-    // - is_auto: u64 (8 bytes)
-    // - start_at: u64 (8 bytes)
-    // - end_at: u64 (8 bytes)
-
-    // For reset to work, we need slot_hash, seed, and value all non-zero
-    // The value is derived from: keccak(seed || slot_hash)
-    const seed = crypto.randomBytes(32);
-    const valueInput = Buffer.concat([seed, slotHash]);
-    const value = crypto.createHash("sha3-256").update(valueInput).digest();
-
-    // Build the account data
-    const data = Buffer.alloc(varAccount.data.length);
-    varAccount.data.copy(data);
-
-    // Update the relevant fields
-    // Offsets based on struct layout:
-    // 0-32: authority
-    // 32-40: id
-    // 40-72: provider
-    // 72-104: commit
-    // 104-136: seed
-    // 136-168: slot_hash
-    // 168-200: value
-
-    seed.copy(data, 104);
-    slotHash.copy(data, 136);
-    value.copy(data, 168);
-
-    debug(`Writing mock entropy data to Var account ${varAddress.toBase58()}`);
-    debug(`  seed: ${seed.toString("hex").slice(0, 16)}...`);
-    debug(`  slot_hash: ${slotHash.toString("hex").slice(0, 16)}...`);
-    debug(`  value: ${value.toString("hex").slice(0, 16)}...`);
-
-    // Use solana CLI to write the account data (requires admin privileges on localnet)
-    const randomSuffix = crypto.randomBytes(16).toString('hex');
-    const dataFile = `/tmp/var-data-${randomSuffix}.bin`;
-    fs.writeFileSync(dataFile, data);
-
-    try {
-      const result = spawnSync(
-        'solana',
-        [
-          'program',
-          'write-account',
-          ENTROPY_PROGRAM_ID.toBase58(),
-          varAddress.toBase58(),
-          dataFile,
-          '--url',
-          'localhost'
-        ],
-        { encoding: 'utf-8' }
-      );
-
-      if (result.error || result.status !== 0) {
-        debug("Failed to write Var account via CLI:", result.stderr || result.error);
-        return false;
-      }
-
-      debug("Successfully wrote Var account data");
-      return true;
-    } catch (writeErr) {
-      debug("Failed to write Var account via CLI:", writeErr);
-      return false;
-    } finally {
-      // Always cleanup temp file
-      try {
-        if (fs.existsSync(dataFile)) {
-          fs.unlinkSync(dataFile);
-        }
-      } catch (cleanupErr) {
-        debug("Failed to cleanup temp file:", cleanupErr);
-      }
-    }
+    debug("Successfully wrote Round account data with RNG via setAccount");
+    return true;
   } catch (error) {
-    debug("Error setting up mock Var account:", error);
+    debug("Error injecting RNG into Round:", error);
     return false;
   }
 }
 
 /**
- * Localnet-only reset that sets up mock entropy and calls real on-chain reset.
- * This tests actual on-chain functionality with simulated randomness.
+ * Localnet-only API to inject RNG into the current Round account.
+ * This enables testing on-chain settlement without running the full mining flow.
+ *
+ * Parameters:
+ *   - winningSquare (optional): Target winning square (0-35). If provided,
+ *     generates a slot_hash that produces this exact outcome.
+ *
+ * This writes directly to the Round account's slot_hash field using
+ * `solana program write-account`, which is only possible on localnet.
  */
 export async function POST(request: Request) {
-  // Validate admin authentication
-  const authResult = validateAdminToken(request);
-  if (!authResult.authorized) {
-    return authResult.response;
-  }
-
-  // Validate localnet only
+  // Validate localnet only - no admin token needed for localnet testing
   const localnetError = validateLocalnetOnly();
   if (localnetError) return localnetError;
 
   try {
-
-    await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
+    const targetSquare = typeof body.winningSquare === 'number' ? body.winningSquare : undefined;
 
     const connection = new Connection(LOCALNET_RPC, "confirmed");
-    const payer = loadTestKeypair();
+    loadTestKeypair(); // Verify keypair exists
 
-    debug("Starting localnet reset...");
+    debug("Injecting RNG into Round account...");
+    if (targetSquare !== undefined) {
+      debug(`Target winning square: ${targetSquare}`);
+    }
 
-    // Get board info
+    // Get board info to find current round ID
     const [boardAddress] = boardPDA();
     const boardAccount = await connection.getAccountInfo(boardAddress);
 
     if (!boardAccount) {
       return NextResponse.json(
-        { success: false, error: "Board not initialized" },
+        { success: false, error: "Board not initialized. Run ore-cli initialize first." },
         { status: 400 }
       );
     }
 
-    // Parse round_id from board (at offset 8 after discriminator and start_slot)
-    const roundId = boardAccount.data.readBigUInt64LE(16);
+    // Parse round_id from board
+    const roundId = readU64FromBuffer(Buffer.from(boardAccount.data), BOARD_ROUND_ID_OFFSET);
     debug(`Current round ID: ${roundId}`);
 
-    // Generate random slot hash for this "round"
-    const slotHash = generateRandomSlotHash();
-    const diceResult = calculateDiceFromSlotHash(slotHash);
+    // Get round account
+    const [roundAddress] = roundPDA(roundId);
+    const roundAccount = await connection.getAccountInfo(roundAddress);
 
-    debug(`Generated dice result: ${diceResult.die1} + ${diceResult.die2} = ${diceResult.sum}`);
-    debug(`Winning square: ${diceResult.winningSquare}`);
-
-    // Get var address
-    const [varAddress] = varPDA(boardAddress, 0n);
-    debug(`Var address: ${varAddress.toBase58()}`);
-
-    // Check if var account exists
-    const varAccount = await connection.getAccountInfo(varAddress);
-
-    if (!varAccount) {
-      return NextResponse.json({
-        success: false,
-        error: "Var account not initialized. Run: COMMAND=new_var PROVIDER=<pubkey> COMMIT=<hash> SAMPLES=100 ./ore-cli",
-        varAddress: varAddress.toBase58(),
-        diceResult, // Still return dice result for UI
-        simulated: true,
-      });
+    if (!roundAccount) {
+      return NextResponse.json(
+        { success: false, error: `Round ${roundId} not found` },
+        { status: 404 }
+      );
     }
 
-    // Try to set up mock var data
-    const varSetup = await setupMockVarAccount(connection, payer, varAddress, boardAddress, slotHash);
+    const roundData = Buffer.from(roundAccount.data);
+    debug(`Round account size: ${roundData.length} bytes`);
 
-    if (!varSetup) {
+    // Check current slot_hash
+    const currentSlotHash = roundData.subarray(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
+    const isZero = currentSlotHash.every(b => b === 0);
+    debug(`Current slot_hash is ${isZero ? "zero (no RNG)" : "non-zero"}`);
+
+    // Generate a slot_hash that produces the target winning square (or random)
+    const { slotHash, winningSquare } = generateSlotHashForWinningSquare(targetSquare);
+    const [die1, die2] = squareToDice(winningSquare);
+    const diceSum = die1 + die2;
+
+    debug(`Generated winning square: ${winningSquare} (dice: ${die1}+${die2}=${diceSum})`);
+
+    // Inject the RNG into the Round account
+    const success = await injectRngIntoRound(
+      roundAddress,
+      roundData,
+      slotHash,
+      new PublicKey(roundAccount.owner),
+      roundAccount.lamports
+    );
+
+    if (!success) {
       return NextResponse.json({
         success: false,
-        error: "Could not set up Var account for testing",
-        diceResult, // Return simulated result anyway
-        simulated: true,
-      });
+        error: "Failed to inject RNG into Round account. Make sure localnet is running with setAccount RPC enabled.",
+        roundId: roundId.toString(),
+        roundAddress: roundAddress.toBase58(),
+      }, { status: 500 });
     }
 
-    // Now try to call the actual reset instruction
-    // This will use the mock entropy data we just wrote
+    // Verify the write was successful
+    const updatedRound = await connection.getAccountInfo(roundAddress);
+    if (updatedRound) {
+      const newSlotHash = Buffer.from(updatedRound.data).subarray(ROUND_SLOT_HASH_OFFSET, ROUND_SLOT_HASH_OFFSET + 32);
+      const verified = newSlotHash.equals(slotHash);
+      debug(`RNG injection verified: ${verified}`);
 
-    // Build reset instruction (simplified - actual reset needs many accounts)
-    // For now, just return the simulated result
+      if (!verified) {
+        return NextResponse.json({
+          success: false,
+          error: "RNG injection did not persist - slot_hash mismatch",
+          roundId: roundId.toString(),
+        }, { status: 500 });
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Localnet reset with mock entropy",
-      diceResults: {
-        die1: diceResult.die1,
-        die2: diceResult.die2,
-        sum: diceResult.sum,
-      },
-      winningSquare: diceResult.winningSquare,
+      message: "RNG injected into Round account successfully",
+      roundId: roundId.toString(),
+      roundAddress: roundAddress.toBase58(),
+      winningSquare,
+      diceResults: { die1, die2, sum: diceSum },
       slotHash: slotHash.toString("hex"),
-      note: "Mock entropy data was written to Var account. Full reset instruction not yet implemented.",
+      note: "Round is now ready for settlement. Call /api/settle-craps with the same winningSquare.",
     });
   } catch (error) {
     debug("Error:", error);

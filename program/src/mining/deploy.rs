@@ -1,12 +1,14 @@
 use entropy_api::state::Var;
-use ore_api::consts::BOARD_SIZE;
+use ore_api::consts::{BOARD_SIZE, RNG_MINT_ADDRESS, ONE_RNG};
 use ore_api::prelude::*;
-use solana_program::{keccak::hashv, log::sol_log, native_token::lamports_to_sol, pubkey};
+use solana_program::{keccak::hashv, log::sol_log, program::invoke, pubkey};
+use spl_associated_token_account::get_associated_token_address;
 use steel::*;
 
 pub const ORE_VAR_ADDRESS: Pubkey = pubkey!("BWCaDY96Xe4WkFq1M7UiCCRcChsJ3p51L5KrGzhxgm2E");
 
 /// Deploys RNG tokens to prospect on dice combinations.
+/// Players stake RNG tokens to bet on dice outcomes and earn CRAP rewards.
 pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResult {
     // Parse data.
     let args = Deploy::try_from_bytes(data)?;
@@ -20,15 +22,25 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         return Err(ProgramError::InvalidArgument);
     }
 
-    // TODO(#049): Need config account - tracked in todos/049
-
     // Load accounts.
+    // Account layout: [ore accounts (7)] [token accounts (4)] [entropy accounts (2)]
     let clock = Clock::get()?;
-    let (ore_accounts, entropy_accounts) = accounts.split_at(7);
+    let (ore_accounts, remaining) = accounts.split_at(7);
+    let (token_accounts, entropy_accounts) = remaining.split_at(4);
+
     sol_log(&format!("Ore accounts: {:?}", ore_accounts.len()).to_string());
+    sol_log(&format!("Token accounts: {:?}", token_accounts.len()).to_string());
     sol_log(&format!("Entropy accounts: {:?}", entropy_accounts.len()).to_string());
+
     let [signer_info, authority_info, automation_info, board_info, miner_info, round_info, system_program] =
         ore_accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+
+    // Parse token accounts for RNG transfer
+    let [signer_rng_ata_info, round_rng_ata_info, rng_mint_info, token_program_info] =
+        token_accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -47,6 +59,16 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         .is_writable()?
         .has_seeds(&[MINER, &authority_info.key.to_bytes()], &ore_api::ID)?;
     system_program.is_program(&system_program::ID)?;
+
+    // Validate RNG token accounts
+    rng_mint_info.has_address(&RNG_MINT_ADDRESS)?;
+    token_program_info.is_program(&spl_token::ID)?;
+    signer_rng_ata_info
+        .is_writable()?
+        .has_address(&get_associated_token_address(signer_info.key, &RNG_MINT_ADDRESS))?;
+    round_rng_ata_info
+        .is_writable()?
+        .has_address(&get_associated_token_address(round_info.key, &RNG_MINT_ADDRESS))?;
 
     // Wait until first deploy to start round.
     if board.end_slot == u64::MAX {
@@ -68,7 +90,7 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         invoke_signed(
             &entropy_api::sdk::next(*board_info.key, *var_info.key, board.end_slot),
             &[board_info.clone(), var_info.clone()],
-            &entropy_api::ID,
+            &ore_api::ID,
             &[BOARD],
         )?;
     }
@@ -208,32 +230,54 @@ pub fn process_deploy(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResul
         }
     }
 
-    // Top up checkpoint fee.
+    // Top up checkpoint fee (still requires small SOL for transaction fees).
     if miner.checkpoint_fee == 0 {
         miner.checkpoint_fee = CHECKPOINT_FEE;
         miner_info.collect(CHECKPOINT_FEE, &signer_info)?;
     }
 
-    // Transfer SOL.
-    if let Some(automation) = automation {
-        automation.balance -= total_amount + automation.fee;
-        automation_info.send(total_amount, &round_info);
-        automation_info.send(automation.fee, &signer_info);
+    // Transfer RNG tokens from signer to round pool.
+    if total_amount > 0 {
+        if let Some(automation) = automation {
+            // Automation mode: transfer from automation's RNG balance
+            automation.balance -= total_amount + automation.fee;
+            // Note: For automation, we need separate RNG token handling
+            // For now, automation still uses the old SOL flow
+            automation_info.send(total_amount, &round_info);
+            automation_info.send(automation.fee, &signer_info);
 
-        // Close automation if balance is less than what's required to deploy 1 square.
-        if automation.balance < automation.amount + automation.fee {
-            automation_info.close(authority_info)?;
+            // Close automation if balance is less than what's required to deploy 1 square.
+            if automation.balance < automation.amount + automation.fee {
+                automation_info.close(authority_info)?;
+            }
+        } else {
+            // Manual deploy: transfer RNG tokens from signer to round
+            invoke(
+                &spl_token::instruction::transfer(
+                    &spl_token::ID,
+                    signer_rng_ata_info.key,
+                    round_rng_ata_info.key,
+                    signer_info.key,
+                    &[],
+                    total_amount,
+                )?,
+                &[
+                    signer_rng_ata_info.clone(),
+                    round_rng_ata_info.clone(),
+                    signer_info.clone(),
+                    token_program_info.clone(),
+                ],
+            )?;
         }
-    } else {
-        round_info.collect(total_amount, &signer_info)?;
     }
 
-    // Log
+    // Log deployment
+    let rng_amount = total_amount as f64 / ONE_RNG as f64;
     sol_log(
         &format!(
-            "Round #{}: deploying {} SOL to {} squares",
+            "Round #{}: deploying {:.2} RNG to {} squares",
             round.id,
-            lamports_to_sol(amount),
+            rng_amount,
             total_squares,
         )
         .as_str(),

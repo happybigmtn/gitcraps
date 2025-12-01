@@ -1,43 +1,51 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+#!/usr/bin/env node
+import { createSolanaRpc, address, getProgramDerivedAddress } from "@solana/kit";
 
 const LOCALNET_RPC = "http://127.0.0.1:8899";
-const ORE_PROGRAM_ID = new PublicKey("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
+const ORE_PROGRAM_ID = address("JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK");
 
-function roundPDA(roundId) {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(roundId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("round"), buf],
-    ORE_PROGRAM_ID
-  );
+function toLeBytes(n, len) {
+  const arr = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    arr[i] = Number((n >> BigInt(8 * i)) & 0xffn);
+  }
+  return arr;
 }
 
-function crapsGamePDA() {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("craps_game")],
-    ORE_PROGRAM_ID
-  );
+async function roundPDA(roundId) {
+  const idBytes = toLeBytes(roundId, 8);
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("round"), idBytes],
+  });
+}
+
+async function crapsGamePDA() {
+  return getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ID,
+    seeds: [new TextEncoder().encode("craps_game")],
+  });
 }
 
 async function main() {
-  const connection = new Connection(LOCALNET_RPC, "confirmed");
+  const rpc = createSolanaRpc(LOCALNET_RPC);
 
   console.log("============================================================");
   console.log("CHECKING ROUND AND CRAPS GAME STATE");
   console.log("============================================================");
 
   // Check Round 0
-  const [round0Address] = roundPDA(0n);
-  console.log("\nRound 0 PDA:", round0Address.toBase58());
+  const [round0Address] = await roundPDA(0n);
+  console.log("\nRound 0 PDA:", round0Address);
 
-  const round0Account = await connection.getAccountInfo(round0Address);
+  const { value: round0Account } = await rpc.getAccountInfo(round0Address, { encoding: "base64" }).send();
   if (round0Account) {
-    console.log("Round 0 data length:", round0Account.data.length);
-    console.log("Round 0 owner:", round0Account.owner.toBase58());
+    const data = Buffer.from(round0Account.data[0], "base64");
+    console.log("Round 0 data length:", data.length);
+    console.log("Round 0 owner:", round0Account.owner);
 
     // Parse Round structure (need to know the layout)
     // Typical: discriminator(1), id(8), start_slot(8), end_slot(8), slots(8*36)...
-    const data = round0Account.data;
     console.log("\nRound 0 raw data (first 100 bytes):");
     console.log(data.slice(0, 100).toString('hex'));
 
@@ -58,14 +66,14 @@ async function main() {
   }
 
   // Check CrapsGame
-  const [crapsGameAddress] = crapsGamePDA();
-  console.log("\n\nCrapsGame PDA:", crapsGameAddress.toBase58());
+  const [crapsGameAddress] = await crapsGamePDA();
+  console.log("\n\nCrapsGame PDA:", crapsGameAddress);
 
-  const crapsGameAccount = await connection.getAccountInfo(crapsGameAddress);
+  const { value: crapsGameAccount } = await rpc.getAccountInfo(crapsGameAddress, { encoding: "base64" }).send();
   if (crapsGameAccount) {
-    console.log("CrapsGame data length:", crapsGameAccount.data.length);
+    const data = Buffer.from(crapsGameAccount.data[0], "base64");
+    console.log("CrapsGame data length:", data.length);
 
-    const data = crapsGameAccount.data;
     console.log("\nCrapsGame raw data (first 64 bytes):");
     console.log(data.slice(0, 64).toString('hex'));
 
@@ -83,7 +91,7 @@ async function main() {
   }
 
   // Check current slot
-  const slot = await connection.getSlot();
+  const slot = await rpc.getSlot().send();
   console.log("\n\nCurrent slot:", slot);
 }
 

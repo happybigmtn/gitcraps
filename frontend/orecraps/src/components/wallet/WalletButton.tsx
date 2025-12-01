@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Button } from "@/components/ui/button";
@@ -10,14 +11,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Copy, ExternalLink, Zap } from "lucide-react";
+import { LogOut, Copy, ExternalLink, Zap, Droplets, Loader2 } from "lucide-react";
 import { truncateAddress } from "@/lib/solana";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useNetworkStore } from "@/store/networkStore";
 
 export function WalletButton() {
   const { publicKey, disconnect, connected, connecting } = useWallet();
   const { setVisible } = useWalletModal();
+  const { network } = useNetworkStore();
+  const [isClaiming, setIsClaiming] = useState(false);
 
   const handleConnect = () => {
     setVisible(true);
@@ -41,6 +45,39 @@ export function WalletButton() {
   const handleDisconnect = async () => {
     await disconnect();
     toast.success("Wallet disconnected");
+  };
+
+  const handleClaimFaucet = async () => {
+    if (!publicKey) return;
+
+    setIsClaiming(true);
+    try {
+      const response = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: publicKey.toBase58(),
+          network,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Show appropriate message based on what was claimed
+        if (data.crapAmount) {
+          toast.success(`Claimed ${data.rngAmount} RNG + ${data.crapAmount} CRAP tokens!`);
+        } else {
+          toast.success(`Claimed ${data.rngAmount} RNG tokens!`);
+        }
+      } else {
+        toast.error(data.error || "Faucet claim failed");
+      }
+    } catch (error) {
+      toast.error("Failed to claim from faucet");
+    } finally {
+      setIsClaiming(false);
+    }
   };
 
   if (!connected) {
@@ -84,6 +121,23 @@ export function WalletButton() {
           <ExternalLink className="mr-2 h-3.5 w-3.5" />
           VIEW ON EXPLORER
         </DropdownMenuItem>
+        {(network === "localnet" || network === "devnet") && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleClaimFaucet}
+              disabled={isClaiming}
+              className="cursor-pointer text-primary"
+            >
+              {isClaiming ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Droplets className="mr-2 h-3.5 w-3.5" />
+              )}
+              {isClaiming ? "CLAIMING..." : network === "localnet" ? "CLAIM ALL TOKENS" : "CLAIM SOL + RNG"}
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleDisconnect} className="text-destructive cursor-pointer">
           <LogOut className="mr-2 h-3.5 w-3.5" />

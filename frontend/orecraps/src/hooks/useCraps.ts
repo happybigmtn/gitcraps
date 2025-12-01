@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+/**
+ * useCraps Hook - Migrated for Anza Kit compatibility
+ *
+ * This hook provides craps game state management.
+ * Uses wallet adapter for wallet state and legacy web3.js for account fetching.
+ * Kit types are exposed via re-exports.
+ */
+
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import {
   crapsGamePDA,
@@ -9,7 +17,9 @@ import {
   parseCrapsPosition,
   CrapsGame,
   CrapsPosition,
+  type Address,
 } from "@/lib/program";
+import { toKitAddress } from "@/lib/solana";
 import { withFallback, getCurrentEndpoint } from "@/lib/network";
 import { useNetworkStore } from "@/store/networkStore";
 import { useCrapsStore } from "@/store/crapsStore";
@@ -211,18 +221,38 @@ export function useCraps() {
   const houseBankroll = crapsGame?.houseBankroll ?? 0n;
   const pendingWinnings = crapsPosition?.pendingWinnings ?? 0n;
 
-  return {
-    // Return data from store (single source of truth)
-    game: crapsGame,
-    position: crapsPosition,
-    loading: isLoading,
-    error,
-    refetch: () => fetchCraps(true),
-    // Computed values (on-chain only)
-    isComeOut,
-    currentPoint,
-    epochId,
-    houseBankroll,
-    pendingWinnings,
-  };
+  // Memoize refetch to avoid creating new function reference on each render
+  const refetch = useCallback(() => fetchCraps(true), [fetchCraps]);
+
+  // FIXED: Memoize the return object to prevent infinite re-render loops
+  // The error "getSnapshot should be cached" occurs when Zustand selectors
+  // return new object references on every render
+  return useMemo(
+    () => ({
+      // Return data from store (single source of truth)
+      game: crapsGame,
+      position: crapsPosition,
+      loading: isLoading,
+      error,
+      refetch,
+      // Computed values (on-chain only)
+      isComeOut,
+      currentPoint,
+      epochId,
+      houseBankroll,
+      pendingWinnings,
+    }),
+    [
+      crapsGame,
+      crapsPosition,
+      isLoading,
+      error,
+      refetch,
+      isComeOut,
+      currentPoint,
+      epochId,
+      houseBankroll,
+      pendingWinnings,
+    ]
+  );
 }

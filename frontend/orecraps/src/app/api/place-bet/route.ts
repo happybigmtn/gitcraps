@@ -16,19 +16,11 @@ const debug = createDebugger("PlaceBet");
  */
 export async function POST(request: Request) {
   try {
-    // Rate limiting check
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
-    const rateLimitResult = apiLimiter.check(100, ip); // 100 requests per minute per IP (increased for testing)
-
-    if (!rateLimitResult.success) {
-      return NextResponse.json(
-        { success: false, error: "Rate limit exceeded. Please try again later." },
-        { status: 429 }
-      );
-    }
-
     const localnetError = validateLocalnetOnly();
     if (localnetError) return localnetError;
+
+    // Rate limiting is skipped for localnet (testing environment)
+    // The API only works on localnet anyway, so no rate limiting needed
 
     const body = await request.json();
     const { bets } = body;
@@ -58,16 +50,17 @@ export async function POST(request: Request) {
         );
       }
 
-      // Validate betType is a valid number in range
-      if (typeof bet.betType !== 'number' || bet.betType < 0 || bet.betType > 15) {
+      // Validate betType is a valid number in range (0-25 for all bet types including side bets)
+      if (typeof bet.betType !== 'number' || bet.betType < 0 || bet.betType > 25) {
         return NextResponse.json(
           { success: false, error: 'Invalid bet type' },
           { status: 400 }
         );
       }
 
-      // Validate point if provided
-      if (bet.point !== undefined && bet.point !== null) {
+      // Validate point if provided and non-zero
+      // point=0 is valid for non-point bets (PassLine, Field, etc.)
+      if (bet.point !== undefined && bet.point !== null && bet.point !== 0) {
         const validPoints = [4, 5, 6, 8, 9, 10];
         if (!validPoints.includes(bet.point)) {
           return NextResponse.json(
@@ -115,7 +108,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       debug('Transaction failed:', result.error);
       return NextResponse.json(
-        { success: false, error: 'Transaction failed' },
+        { success: false, error: result.error || 'Transaction failed' },
         { status: 500 }
       );
     }

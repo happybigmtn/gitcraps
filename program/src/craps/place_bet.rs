@@ -1,9 +1,13 @@
 use ore_api::error::OreError;
 use ore_api::prelude::*;
 use solana_program::log::sol_log;
+use solana_program::program::invoke;
 use steel::*;
 
-use super::utils::point_to_index;
+use super::utils::{point_to_index, sum_to_index, is_valid_yes_no_sum};
+
+/// Expected size of the CrapsPosition struct (with 8-byte discriminator).
+const CRAPS_POSITION_SIZE: usize = 8 + std::mem::size_of::<CrapsPosition>();
 
 /// Calculate the maximum potential payout for a bet type and amount.
 /// This helps ensure the house has sufficient bankroll to cover all possible outcomes.
@@ -100,6 +104,58 @@ fn calculate_max_payout(bet_type: u8, point: u8, amount: u64) -> Result<u64, Pro
         14 => calc(ACES_PAYOUT_NUM, ACES_PAYOUT_DEN),
         // Twelve (30:1)
         15 => calc(TWELVE_PAYOUT_NUM, TWELVE_PAYOUT_DEN),
+        // Yes bet (true odds) - sum before 7
+        26 => {
+            let (num, den) = match point {
+                2 => (YES_2_PAYOUT_NUM, YES_2_PAYOUT_DEN),
+                3 => (YES_3_PAYOUT_NUM, YES_3_PAYOUT_DEN),
+                4 => (YES_4_PAYOUT_NUM, YES_4_PAYOUT_DEN),
+                5 => (YES_5_PAYOUT_NUM, YES_5_PAYOUT_DEN),
+                6 => (YES_6_PAYOUT_NUM, YES_6_PAYOUT_DEN),
+                8 => (YES_8_PAYOUT_NUM, YES_8_PAYOUT_DEN),
+                9 => (YES_9_PAYOUT_NUM, YES_9_PAYOUT_DEN),
+                10 => (YES_10_PAYOUT_NUM, YES_10_PAYOUT_DEN),
+                11 => (YES_11_PAYOUT_NUM, YES_11_PAYOUT_DEN),
+                12 => (YES_12_PAYOUT_NUM, YES_12_PAYOUT_DEN),
+                _ => return Ok(amount), // 7 is invalid
+            };
+            calc(num, den)
+        }
+        // No bet (inverse true odds) - 7 before sum
+        27 => {
+            let (num, den) = match point {
+                2 => (NO_2_PAYOUT_NUM, NO_2_PAYOUT_DEN),
+                3 => (NO_3_PAYOUT_NUM, NO_3_PAYOUT_DEN),
+                4 => (NO_4_PAYOUT_NUM, NO_4_PAYOUT_DEN),
+                5 => (NO_5_PAYOUT_NUM, NO_5_PAYOUT_DEN),
+                6 => (NO_6_PAYOUT_NUM, NO_6_PAYOUT_DEN),
+                8 => (NO_8_PAYOUT_NUM, NO_8_PAYOUT_DEN),
+                9 => (NO_9_PAYOUT_NUM, NO_9_PAYOUT_DEN),
+                10 => (NO_10_PAYOUT_NUM, NO_10_PAYOUT_DEN),
+                11 => (NO_11_PAYOUT_NUM, NO_11_PAYOUT_DEN),
+                12 => (NO_12_PAYOUT_NUM, NO_12_PAYOUT_DEN),
+                _ => return Ok(amount), // 7 is invalid
+            };
+            calc(num, den)
+        }
+        // Next bet (single-roll true odds)
+        28 => {
+            let (num, den) = match point {
+                2 => (HOP_2_PAYOUT_NUM, HOP_2_PAYOUT_DEN),
+                3 => (HOP_3_PAYOUT_NUM, HOP_3_PAYOUT_DEN),
+                4 => (HOP_4_PAYOUT_NUM, HOP_4_PAYOUT_DEN),
+                5 => (HOP_5_PAYOUT_NUM, HOP_5_PAYOUT_DEN),
+                6 => (HOP_6_PAYOUT_NUM, HOP_6_PAYOUT_DEN),
+                7 => (HOP_7_PAYOUT_NUM, HOP_7_PAYOUT_DEN),
+                8 => (HOP_8_PAYOUT_NUM, HOP_8_PAYOUT_DEN),
+                9 => (HOP_9_PAYOUT_NUM, HOP_9_PAYOUT_DEN),
+                10 => (HOP_10_PAYOUT_NUM, HOP_10_PAYOUT_DEN),
+                11 => (HOP_11_PAYOUT_NUM, HOP_11_PAYOUT_DEN),
+                12 => (HOP_12_PAYOUT_NUM, HOP_12_PAYOUT_DEN),
+                _ => return Ok(amount),
+            };
+            calc(num, den)
+        }
         _ => Ok(amount), // Invalid bet type, will be caught later
     }
 }
@@ -115,7 +171,18 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
     sol_log(&format!("PlaceCrapsBet: type={}, point={}, amount={}", bet_type, point, amount).as_str());
 
     // Load accounts.
-    let [signer_info, craps_game_info, craps_position_info, system_program] = accounts else {
+    // Account layout:
+    // 0: signer
+    // 1: craps_game - game state PDA
+    // 2: craps_position - user position PDA
+    // 3: craps_vault - vault PDA (owner of vault token account)
+    // 4: signer_crap_ata - signer's CRAP token account
+    // 5: vault_crap_ata - craps vault's CRAP token account
+    // 6: crap_mint - CRAP token mint
+    // 7: system_program
+    // 8: token_program
+    // 9: associated_token_program
+    let [signer_info, craps_game_info, craps_position_info, craps_vault_info, signer_crap_ata, vault_crap_ata, crap_mint, system_program, token_program, associated_token_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -126,7 +193,13 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
     craps_position_info
         .is_writable()?
         .has_seeds(&[CRAPS_POSITION, &signer_info.key.to_bytes()], &ore_api::ID)?;
+    craps_vault_info.has_seeds(&[CRAPS_VAULT], &ore_api::ID)?;
+    signer_crap_ata.is_writable()?;
+    vault_crap_ata.is_writable()?;
+    crap_mint.has_address(&CRAP_MINT_ADDRESS)?;
     system_program.is_program(&system_program::ID)?;
+    token_program.is_program(&spl_token::ID)?;
+    associated_token_program.is_program(&spl_associated_token_account::ID)?;
 
     // Load or create craps game account.
     let craps_game = if craps_game_info.data_is_empty() {
@@ -166,6 +239,37 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         position.epoch_id = craps_game.epoch_id;
         position
     } else {
+        // Check if account needs migration (legacy 600-byte accounts)
+        let current_size = craps_position_info.data_len();
+        if current_size < CRAPS_POSITION_SIZE {
+            sol_log(&format!(
+                "Migrating CrapsPosition: {} -> {} bytes",
+                current_size, CRAPS_POSITION_SIZE
+            ));
+
+            // Calculate additional rent needed
+            let rent = solana_program::rent::Rent::get()?;
+            let current_rent = rent.minimum_balance(current_size);
+            let new_rent = rent.minimum_balance(CRAPS_POSITION_SIZE);
+            let additional_rent = new_rent.saturating_sub(current_rent);
+
+            // Transfer additional rent if needed
+            if additional_rent > 0 {
+                solana_program::program::invoke(
+                    &solana_program::system_instruction::transfer(
+                        signer_info.key,
+                        craps_position_info.key,
+                        additional_rent,
+                    ),
+                    &[signer_info.clone(), craps_position_info.clone(), system_program.clone()],
+                )?;
+            }
+
+            // Reallocate the account (new bytes are zero-initialized)
+            craps_position_info.realloc(CRAPS_POSITION_SIZE, false)?;
+            sol_log("CrapsPosition migration complete");
+        }
+
         let position = craps_position_info.as_account_mut::<CrapsPosition>(&ore_api::ID)?;
         // Verify signer is the position authority
         if position.authority != *signer_info.key {
@@ -397,6 +501,55 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
                 .ok_or(OreError::ArithmeticOverflow)?;
             sol_log(&format!("Twelve bet placed: {}", amount).as_str());
         }
+        // Yes bet (true odds) - sum rolls before 7
+        26 => { // Yes (formerly Buy)
+            // Valid for sums 2-12 except 7
+            if is_valid_yes_no_sum(point) {
+                if let Some(idx) = sum_to_index(point) {
+                    craps_position.yes_bets[idx] = craps_position.yes_bets[idx]
+                        .checked_add(amount)
+                        .ok_or(OreError::ArithmeticOverflow)?;
+                    sol_log(&format!("Yes bet on sum {}: {}", point, amount).as_str());
+                } else {
+                    sol_log("Invalid sum for Yes bet");
+                    return Err(OreError::InvalidBetType.into());
+                }
+            } else {
+                sol_log("Invalid sum for Yes bet (must be 2-12, not 7)");
+                return Err(OreError::InvalidBetType.into());
+            }
+        }
+        // No bet (inverse true odds) - 7 rolls before sum
+        27 => { // No (formerly Lay)
+            // Valid for sums 2-12 except 7
+            if is_valid_yes_no_sum(point) {
+                if let Some(idx) = sum_to_index(point) {
+                    craps_position.no_bets[idx] = craps_position.no_bets[idx]
+                        .checked_add(amount)
+                        .ok_or(OreError::ArithmeticOverflow)?;
+                    sol_log(&format!("No bet on sum {}: {}", point, amount).as_str());
+                } else {
+                    sol_log("Invalid sum for No bet");
+                    return Err(OreError::InvalidBetType.into());
+                }
+            } else {
+                sol_log("Invalid sum for No bet (must be 2-12, not 7)");
+                return Err(OreError::InvalidBetType.into());
+            }
+        }
+        // Next bet (single-roll true odds)
+        28 => { // Next (formerly Hop)
+            // Point is the dice sum (2-12)
+            if let Some(idx) = sum_to_index(point) {
+                craps_position.next_bets[idx] = craps_position.next_bets[idx]
+                    .checked_add(amount)
+                    .ok_or(OreError::ArithmeticOverflow)?;
+                sol_log(&format!("Next bet on sum {}: {}", point, amount).as_str());
+            } else {
+                sol_log("Invalid sum for Next bet (must be 2-12)");
+                return Err(OreError::InvalidBetType.into());
+            }
+        }
         _ => {
             sol_log("Invalid bet type");
             return Err(OreError::InvalidBetType.into());
@@ -413,8 +566,39 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
         .checked_add(max_payout)
         .ok_or(OreError::ArithmeticOverflow)?;
 
-    // Transfer SOL from signer to craps game (house bankroll).
-    craps_game_info.collect(amount, &signer_info)?;
+    // Create vault's CRAP token account if it doesn't exist.
+    if vault_crap_ata.data_is_empty() {
+        create_associated_token_account(
+            signer_info,
+            craps_vault_info,
+            vault_crap_ata,
+            crap_mint,
+            system_program,
+            token_program,
+            associated_token_program,
+        )?;
+        sol_log("Created craps vault CRAP token account");
+    }
+
+    // Transfer CRAP tokens from signer to craps vault.
+    invoke(
+        &spl_token::instruction::transfer(
+            &spl_token::ID,
+            signer_crap_ata.key,
+            vault_crap_ata.key,
+            signer_info.key,
+            &[],
+            amount,
+        )?,
+        &[
+            signer_crap_ata.clone(),
+            vault_crap_ata.clone(),
+            signer_info.clone(),
+            token_program.clone(),
+        ],
+    )?;
+
+    // Update house bankroll tracking.
     craps_game.house_bankroll = craps_game.house_bankroll
         .checked_add(amount)
         .ok_or(OreError::ArithmeticOverflow)?;

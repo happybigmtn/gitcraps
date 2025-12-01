@@ -9,14 +9,14 @@ import {
   HARDWAY_NUMBERS,
   indexToPoint,
 } from "@/lib/program";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { ONE_RNG } from "@/lib/solana";
 import { Dices, Target, CircleDot, Loader2, AlertCircle } from "lucide-react";
 
 export function CrapsGameStatus() {
   const { game, position, loading, error, isComeOut, currentPoint } = useCraps();
 
-  const formatSOL = useCallback(
-    (lamports: bigint) => (Number(lamports) / LAMPORTS_PER_SOL).toFixed(4),
+  const formatRNG = useCallback(
+    (amount: bigint) => (Number(amount) / Number(ONE_RNG)).toFixed(4),
     []
   );
 
@@ -87,18 +87,18 @@ export function CrapsGameStatus() {
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <div className="text-xs text-muted-foreground">House Bankroll</div>
-            <div className="font-mono font-bold">{formatSOL(game.houseBankroll)} SOL</div>
+            <div className="font-mono font-bold">{formatRNG(game.houseBankroll)} RNG</div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Total Collected</div>
             <div className="font-mono font-bold text-green-500">
-              {formatSOL(game.totalCollected)} SOL
+              {formatRNG(game.totalCollected)} RNG
             </div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Total Payouts</div>
             <div className="font-mono font-bold text-red-500">
-              {formatSOL(game.totalPayouts)} SOL
+              {formatRNG(game.totalPayouts)} RNG
             </div>
           </div>
         </div>
@@ -118,25 +118,25 @@ export function CrapsGameStatus() {
                     {position.passLine > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Pass Line</span>
-                        <span className="font-mono">{formatSOL(position.passLine)}</span>
+                        <span className="font-mono">{formatRNG(position.passLine)}</span>
                       </div>
                     )}
                     {position.dontPass > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Don't Pass</span>
-                        <span className="font-mono">{formatSOL(position.dontPass)}</span>
+                        <span className="font-mono">{formatRNG(position.dontPass)}</span>
                       </div>
                     )}
                     {position.passOdds > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Pass Odds</span>
-                        <span className="font-mono">{formatSOL(position.passOdds)}</span>
+                        <span className="font-mono">{formatRNG(position.passOdds)}</span>
                       </div>
                     )}
                     {position.dontPassOdds > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>DP Odds</span>
-                        <span className="font-mono">{formatSOL(position.dontPassOdds)}</span>
+                        <span className="font-mono">{formatRNG(position.dontPassOdds)}</span>
                       </div>
                     )}
                   </div>
@@ -157,7 +157,7 @@ export function CrapsGameStatus() {
                           className="p-2 bg-secondary/50 rounded text-sm flex justify-between"
                         >
                           <span>Place {point}</span>
-                          <span className="font-mono">{formatSOL(bet)}</span>
+                          <span className="font-mono">{formatRNG(bet)}</span>
                         </div>
                       );
                     })}
@@ -179,7 +179,7 @@ export function CrapsGameStatus() {
                           className="p-2 bg-secondary/50 rounded text-sm flex justify-between"
                         >
                           <span>Come {point}</span>
-                          <span className="font-mono">{formatSOL(bet)}</span>
+                          <span className="font-mono">{formatRNG(bet)}</span>
                         </div>
                       );
                     })}
@@ -201,7 +201,7 @@ export function CrapsGameStatus() {
                           className="p-2 bg-secondary/50 rounded text-sm flex justify-between"
                         >
                           <span>Hard {hardway}</span>
-                          <span className="font-mono">{formatSOL(bet)}</span>
+                          <span className="font-mono">{formatRNG(bet)}</span>
                         </div>
                       );
                     })}
@@ -222,37 +222,37 @@ export function CrapsGameStatus() {
                     {position.fieldBet > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Field</span>
-                        <span className="font-mono">{formatSOL(position.fieldBet)}</span>
+                        <span className="font-mono">{formatRNG(position.fieldBet)}</span>
                       </div>
                     )}
                     {position.anySeven > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Any 7</span>
-                        <span className="font-mono">{formatSOL(position.anySeven)}</span>
+                        <span className="font-mono">{formatRNG(position.anySeven)}</span>
                       </div>
                     )}
                     {position.anyCraps > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Any Craps</span>
-                        <span className="font-mono">{formatSOL(position.anyCraps)}</span>
+                        <span className="font-mono">{formatRNG(position.anyCraps)}</span>
                       </div>
                     )}
                     {position.yoEleven > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Yo</span>
-                        <span className="font-mono">{formatSOL(position.yoEleven)}</span>
+                        <span className="font-mono">{formatRNG(position.yoEleven)}</span>
                       </div>
                     )}
                     {position.aces > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>Aces</span>
-                        <span className="font-mono">{formatSOL(position.aces)}</span>
+                        <span className="font-mono">{formatRNG(position.aces)}</span>
                       </div>
                     )}
                     {position.twelve > 0n && (
                       <div className="p-2 bg-secondary/50 rounded text-sm flex justify-between">
                         <span>12</span>
-                        <span className="font-mono">{formatSOL(position.twelve)}</span>
+                        <span className="font-mono">{formatRNG(position.twelve)}</span>
                       </div>
                     )}
                   </div>
@@ -265,7 +265,7 @@ export function CrapsGameStatus() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Pending Winnings</span>
                     <span className="font-mono font-bold text-green-500">
-                      {formatSOL(position.pendingWinnings)} SOL
+                      {formatRNG(position.pendingWinnings)} RNG
                     </span>
                   </div>
                 </div>

@@ -44,7 +44,7 @@ pub fn process_new_var(accounts: &[AccountInfo<'_>], data: &[u8]) -> ProgramResu
             var_info.clone(),
             system_program.clone(),
         ],
-        &entropy_api::ID,
+        &ore_api::ID,
         &[BOARD],
     )?;
 

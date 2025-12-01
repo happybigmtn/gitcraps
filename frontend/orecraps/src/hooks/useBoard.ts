@@ -1,7 +1,14 @@
 "use client";
 
+/**
+ * useBoard Hook - Migrated for Anza Kit compatibility
+ *
+ * This hook provides board/round state management.
+ * Uses legacy web3.js for account fetching, Kit types exposed via re-exports.
+ */
+
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
-import { boardPDA, roundPDA } from "@/lib/solana";
+import { boardPDA, roundPDA, type Address } from "@/lib/solana";
 import { BOARD_SIZE } from "@/lib/program";
 import { withFallback, getCurrentEndpoint } from "@/lib/network";
 import { useNetworkStore } from "@/store/networkStore";
@@ -306,8 +313,8 @@ export function useBoard() {
       fetchingRef.current = false;
       initialFetchDoneRef.current = true;
     }
-  // FIXED: Properly include dependencies to avoid stale closures
-  }, [MIN_POLL_INTERVAL, round]);
+  // FIXED: Only include stable dependencies - round access via ref to avoid infinite loop
+  }, [MIN_POLL_INTERVAL]);
 
   // Calculate time remaining until round expires
   const getTimeRemaining = useCallback(() => {
@@ -316,9 +323,12 @@ export function useBoard() {
     return slotsRemaining * 0.4; // Convert to seconds (400ms per slot)
   }, [round, board]);
 
-  // Memoize time remaining calculation to avoid redundant recalculations in polling loop
-  const timeRemaining = useMemo(() => {
-    return getTimeRemaining();
+  // Use ref for time remaining to avoid re-render loop in polling effect
+  const timeRemainingRef = useRef<number | null>(null);
+
+  // Update ref when board/round changes
+  useEffect(() => {
+    timeRemainingRef.current = getTimeRemaining();
   }, [getTimeRemaining]);
 
   // Initial fetch and adaptive polling
@@ -343,10 +353,11 @@ export function useBoard() {
       // FIXED: Don't schedule if unmounted
       if (!isMounted) return;
 
-      // Determine next poll interval based on memoized time remaining
+      // Determine next poll interval based on time remaining from ref (avoids dependency loop)
       let pollInterval = NORMAL_POLL_INTERVAL;
+      const currentTimeRemaining = timeRemainingRef.current;
 
-      if (timeRemaining !== null && timeRemaining <= 10 && timeRemaining > 0) {
+      if (currentTimeRemaining !== null && currentTimeRemaining <= 10 && currentTimeRemaining > 0) {
         // Poll faster when <10 seconds remaining (but still respecting min interval)
         pollInterval = FAST_POLL_INTERVAL;
       }
@@ -373,15 +384,24 @@ export function useBoard() {
         abortControllerRef.current.abort();
       }
     };
-  // FIXED: Use memoized timeRemaining instead of getTimeRemaining to avoid recalculations
-  }, [network, fetchBoard, timeRemaining, NORMAL_POLL_INTERVAL, FAST_POLL_INTERVAL, MIN_POLL_INTERVAL]);
+  // FIXED: Removed timeRemaining from deps to avoid infinite re-render loop
+  }, [network, fetchBoard, NORMAL_POLL_INTERVAL, FAST_POLL_INTERVAL, MIN_POLL_INTERVAL]);
 
-  return {
-    board,
-    round,
-    loading,
-    error,
-    refetch: fetchBoard,
-    getTimeRemaining,
-  };
+  // FIXED: Memoize the return object to prevent infinite re-render loops
+  // The error "getSnapshot should be cached" occurs when React hooks return new
+  // object references on every render, causing subscribers to re-render infinitely
+  return useMemo(
+    () => ({
+      board,
+      round,
+      loading,
+      error,
+      refetch: fetchBoard,
+      getTimeRemaining,
+    }),
+    [board, round, loading, error, fetchBoard, getTimeRemaining]
+  );
 }
+
+// Re-export Kit types for convenience
+export { type Address } from "@/lib/solana";

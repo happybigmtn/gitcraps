@@ -1,25 +1,93 @@
+/**
+ * Solana Core Utilities - Migrated to Anza Kit
+ *
+ * This module provides core Solana utilities using the new @solana/kit APIs.
+ * Legacy web3.js compatibility is maintained via @solana/compat for gradual migration.
+ */
+
+import {
+  address,
+  type Address,
+  getProgramDerivedAddress,
+  createSolanaRpc,
+  type Rpc,
+} from "@solana/kit";
+import { fromLegacyPublicKey } from "@solana/compat";
 import { PublicKey, Connection, clusterApiUrl, TransactionInstruction } from "@solana/web3.js";
 
-// Program IDs
-// Devnet program ID - deployed for testing
+// ============================================================================
+// PROGRAM IDs - Kit Address Type
+// ============================================================================
+
+// Program IDs using Kit Address type
+export const ORE_PROGRAM_ADDRESS: Address = address(
+  "JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK"
+);
+
+// Legacy alias for backwards compatibility
 export const ORE_PROGRAM_ID = new PublicKey(
   "JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK"
 );
-// Legacy ORE mint - not used in this game
-// Users stake RNG tokens and earn CRAP tokens
 
-// DEVNET TOKEN SYSTEM
-// RNG token - staked to play games
-// CRAP token - earned from OreCraps game
-// Future games will also use RNG staking to earn their respective tokens
+// ============================================================================
+// TOKEN MINTS - Kit Address Type
+// ============================================================================
 
-// Devnet token mints - created for testing
-export const RNG_MINT = new PublicKey(
-  "AG7WRHgsvg97pUT8wa59eFVmAf3UGLbxUpPRV4dGDaPc"
-);
-export const CRAP_MINT = new PublicKey(
-  "5buiHDD8uGJFMfRU1wCF8Fcjxqr45SSrz9ErX65mJ6qS"
-);
+// Network type (defined early for mint address selection)
+export type Network = "devnet" | "mainnet-beta" | "localnet";
+
+// Localnet mint addresses (vanity addresses)
+const LOCALNET_RNG_MINT = "RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump";
+const LOCALNET_CRAP_MINT = "CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump";
+
+// Devnet mint addresses (created via spl-token create-token)
+const DEVNET_RNG_MINT = "8HJyJPD4iWD1X9FxZEjDuVpPqSBvNeaJCczXeK2xsShs";
+const DEVNET_CRAP_MINT = "7frAenkamJSASBH9YukkzBsSMz9paQdYuSGw4SjWkXrf";
+
+// Network detection helper
+function getNetworkFromEnv(): Network {
+  return (process.env.NEXT_PUBLIC_SOLANA_NETWORK as Network) || "localnet";
+}
+
+// Get the correct mint address based on network
+function getRngMintForNetwork(network?: Network): string {
+  const net = network || getNetworkFromEnv();
+  return net === "devnet" ? DEVNET_RNG_MINT : LOCALNET_RNG_MINT;
+}
+
+function getCrapMintForNetwork(network?: Network): string {
+  const net = network || getNetworkFromEnv();
+  return net === "devnet" ? DEVNET_CRAP_MINT : LOCALNET_CRAP_MINT;
+}
+
+// Token mints using Kit Address type - these are dynamic based on network
+export const RNG_MINT_ADDRESS: Address = address(getRngMintForNetwork());
+export const CRAP_MINT_ADDRESS: Address = address(getCrapMintForNetwork());
+
+// Legacy aliases for backwards compatibility
+export const RNG_MINT = new PublicKey(getRngMintForNetwork());
+export const CRAP_MINT = new PublicKey(getCrapMintForNetwork());
+
+// Export getters for dynamic network switching
+export function getRngMint(network?: Network): PublicKey {
+  return new PublicKey(getRngMintForNetwork(network));
+}
+
+export function getCrapMint(network?: Network): PublicKey {
+  return new PublicKey(getCrapMintForNetwork(network));
+}
+
+export function getRngMintAddress(network?: Network): Address {
+  return address(getRngMintForNetwork(network));
+}
+
+export function getCrapMintAddress(network?: Network): Address {
+  return address(getCrapMintForNetwork(network));
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
 
 // Token decimals
 export const TOKEN_DECIMALS = 11;
@@ -34,7 +102,93 @@ export const ONE_CRAP = 1_000_000_000n; // 10^9
 // Slot timing
 export const SLOT_DURATION_MS = 400; // ~0.4 seconds per slot
 
-// PDA derivations
+// ============================================================================
+// PDA DERIVATIONS - Using Kit APIs
+// ============================================================================
+
+/**
+ * Convert bigint to little-endian Uint8Array for PDA seeds
+ */
+function toLeBytes(value: bigint, length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i++) {
+    bytes[i] = Number((value >> BigInt(8 * i)) & 0xffn);
+  }
+  return bytes;
+}
+
+/**
+ * Get Board PDA using Kit
+ */
+export async function getBoardPDA(): Promise<{ pda: Address; bump: number }> {
+  const seeds = [new TextEncoder().encode("board")];
+  const [pda, bump] = await getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ADDRESS,
+    seeds,
+  });
+  return { pda, bump };
+}
+
+/**
+ * Get Round PDA using Kit
+ */
+export async function getRoundPDA(roundId: bigint): Promise<{ pda: Address; bump: number }> {
+  const seeds = [
+    new TextEncoder().encode("round"),
+    toLeBytes(roundId, 8),
+  ];
+  const [pda, bump] = await getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ADDRESS,
+    seeds,
+  });
+  return { pda, bump };
+}
+
+/**
+ * Get Miner PDA using Kit
+ */
+export async function getMinerPDA(authority: Address): Promise<{ pda: Address; bump: number }> {
+  // For Kit Address, we need the raw bytes (32 bytes from base58)
+  const authorityBytes = new TextEncoder().encode(authority);
+  const seeds = [
+    new TextEncoder().encode("miner"),
+    authorityBytes,
+  ];
+  const [pda, bump] = await getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ADDRESS,
+    seeds,
+  });
+  return { pda, bump };
+}
+
+/**
+ * Get Treasury PDA using Kit
+ */
+export async function getTreasuryPDA(): Promise<{ pda: Address; bump: number }> {
+  const seeds = [new TextEncoder().encode("treasury")];
+  const [pda, bump] = await getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ADDRESS,
+    seeds,
+  });
+  return { pda, bump };
+}
+
+/**
+ * Get Config PDA using Kit
+ */
+export async function getConfigPDA(): Promise<{ pda: Address; bump: number }> {
+  const seeds = [new TextEncoder().encode("config")];
+  const [pda, bump] = await getProgramDerivedAddress({
+    programAddress: ORE_PROGRAM_ADDRESS,
+    seeds,
+  });
+  return { pda, bump };
+}
+
+// ============================================================================
+// LEGACY PDA FUNCTIONS - For backwards compatibility
+// ============================================================================
+
 export function boardPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("board")],
@@ -43,7 +197,6 @@ export function boardPDA(): [PublicKey, number] {
 }
 
 export function roundPDA(roundId: bigint): [PublicKey, number] {
-  // Convert bigint to little-endian Uint8Array (browser-compatible)
   const buffer = new Uint8Array(8);
   for (let i = 0; i < 8; i++) {
     buffer[i] = Number((roundId >> BigInt(8 * i)) & 0xffn);
@@ -75,15 +228,86 @@ export function configPDA(): [PublicKey, number] {
   );
 }
 
-// Connection helper
+// ============================================================================
+// RPC / CONNECTION HELPERS
+// ============================================================================
+
+// Network type is already exported at the top of the file
+
+/**
+ * Get RPC endpoint URL for a network
+ */
+export function getRpcEndpoint(network: Network = "devnet"): string {
+  const envEndpoint = process.env.NEXT_PUBLIC_RPC_ENDPOINT;
+  if (envEndpoint) return envEndpoint;
+
+  switch (network) {
+    case "localnet":
+      return "http://127.0.0.1:8899";
+    case "mainnet-beta":
+      return "https://api.mainnet-beta.solana.com";
+    case "devnet":
+    default:
+      return "https://api.devnet.solana.com";
+  }
+}
+
+/**
+ * Create a Kit RPC client
+ */
+export function createRpc(network: Network = "devnet"): Rpc<any> {
+  const endpoint = getRpcEndpoint(network);
+  return createSolanaRpc(endpoint);
+}
+
+// Singleton Kit RPC instance
+let _kitRpc: Rpc<any> | null = null;
+let _currentNetwork: Network | null = null;
+
+/**
+ * Get singleton Kit RPC client
+ */
+export function getKitRpc(network?: Network): Rpc<any> {
+  const net = network || (process.env.NEXT_PUBLIC_SOLANA_NETWORK as Network) || "devnet";
+
+  if (!_kitRpc || _currentNetwork !== net) {
+    _kitRpc = createRpc(net);
+    _currentNetwork = net;
+  }
+
+  return _kitRpc;
+}
+
+/**
+ * Legacy connection helper (for backwards compatibility)
+ */
 export function getConnection(network: "devnet" | "mainnet-beta" = "devnet") {
   return new Connection(clusterApiUrl(network), "confirmed");
 }
 
-// Format helpers
+// ============================================================================
+// ADDRESS CONVERSION HELPERS
+// ============================================================================
+
+/**
+ * Convert legacy PublicKey to Kit Address
+ */
+export function toKitAddress(pubkey: PublicKey): Address {
+  return address(pubkey.toBase58());
+}
+
+/**
+ * Convert Kit Address to legacy PublicKey
+ */
+export function toLegacyPublicKey(addr: Address | string): PublicKey {
+  return new PublicKey(addr);
+}
+
+// ============================================================================
+// FORMAT HELPERS
+// ============================================================================
+
 export function formatSol(lamports: bigint | number): string {
-  // Convert BigInt to Number for display purposes only
-  // Division by 1e9 makes the number small enough to avoid precision issues
   const sol = Number(lamports) / 1e9;
   return sol.toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -108,8 +332,6 @@ export function formatCrap(amount: bigint | number): string {
 }
 
 export function lamportsToSol(lamports: bigint | number): number {
-  // Convert BigInt to Number for display purposes only
-  // Division by 1e9 makes the number small enough to avoid precision issues
   return Number(lamports) / 1e9;
 }
 
@@ -117,7 +339,10 @@ export function solToLamports(sol: number): bigint {
   return BigInt(Math.floor(sol * 1e9));
 }
 
-// Slot to time conversion
+// ============================================================================
+// TIME / SLOT HELPERS
+// ============================================================================
+
 export function slotsToSeconds(slots: number): number {
   return (slots * SLOT_DURATION_MS) / 1000;
 }
@@ -129,10 +354,17 @@ export function formatTimeRemaining(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-// Truncate address for display
+// ============================================================================
+// DISPLAY HELPERS
+// ============================================================================
+
 export function truncateAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 }
+
+// ============================================================================
+// INSTRUCTION HELPERS (Legacy - for backwards compatibility)
+// ============================================================================
 
 // Instruction discriminators
 const INSTRUCTION_START_ROUND = 22;
@@ -174,3 +406,17 @@ export function buildStartRoundInstruction(
     data: Buffer.from(data),
   });
 }
+
+// ============================================================================
+// RE-EXPORTS from Kit
+// ============================================================================
+
+export {
+  address,
+  type Address,
+  getProgramDerivedAddress,
+  createSolanaRpc,
+  type Rpc,
+} from "@solana/kit";
+
+export { fromLegacyPublicKey } from "@solana/compat";

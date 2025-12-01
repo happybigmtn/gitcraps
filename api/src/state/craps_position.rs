@@ -64,6 +64,27 @@ pub struct CrapsPosition {
     /// Padding for alignment.
     pub _padding1: [u8; 7],
 
+    // ==================== YES BETS (TRUE ODDS) ====================
+    // "Yes" bets - chosen sum hits before 7, pays at true odds (0% house edge).
+    // Index: 0=sum2, 1=sum3, ..., 10=sum12 (7 is invalid, always 0)
+
+    /// Yes bet amounts for each sum 2-12.
+    pub yes_bets: [u64; 11],
+
+    // ==================== NO BETS (INVERSE TRUE ODDS) ====================
+    // "No" bets - 7 hits before chosen sum, pays inverse true odds.
+    // Index: 0=sum2, 1=sum3, ..., 10=sum12 (7 is invalid, always 0)
+
+    /// No bet amounts for each sum 2-12.
+    pub no_bets: [u64; 11],
+
+    // ==================== NEXT BETS (SINGLE-ROLL TRUE ODDS) ====================
+    // "Next" bets - bet on specific dice sum for next roll, pays true odds.
+    // Index: 0=sum2, 1=sum3, ..., 10=sum12
+
+    /// Next bet amounts for each possible sum (2-12).
+    pub next_bets: [u64; 11],
+
     // ==================== HARDWAYS ====================
     // Lose on 7 or easy way. Index: 0=hard4, 1=hard6, 2=hard8, 3=hard10
 
@@ -90,6 +111,94 @@ pub struct CrapsPosition {
 
     /// Twelve bet (wins on 12).
     pub twelve: u64,
+
+    // ==================== BONUS CRAPS SIDE BETS ====================
+    // These bets win if all required totals are hit before a 7.
+
+    /// Small bet amount - wins if 2,3,4,5,6 all hit before 7.
+    pub bonus_small: u64,
+
+    /// Tall bet amount - wins if 8,9,10,11,12 all hit before 7.
+    pub bonus_tall: u64,
+
+    /// All bet amount - wins if all 2-6 and 8-12 hit before 7.
+    pub bonus_all: u64,
+
+    /// Bitmask tracking which Small totals have been hit.
+    /// Bit 0 = 2, Bit 1 = 3, Bit 2 = 4, Bit 3 = 5, Bit 4 = 6.
+    pub small_hits: u8,
+
+    /// Bitmask tracking which Tall totals have been hit.
+    /// Bit 0 = 8, Bit 1 = 9, Bit 2 = 10, Bit 3 = 11, Bit 4 = 12.
+    pub tall_hits: u8,
+
+    /// Padding for alignment.
+    pub _padding2: [u8; 6],
+
+    // ==================== COME-OUT ONLY SIDE BETS ====================
+    // These bets can only be placed on come-out roll and persist until seven-out.
+
+    /// Fire Bet - wins based on unique points made (4+ required).
+    pub fire_bet: u64,
+
+    /// Fire Bet tracking: bitmask of unique points made.
+    /// Bit 0=4, 1=5, 2=6, 3=8, 4=9, 5=10.
+    pub fire_points_made: u8,
+
+    /// Padding for u64 alignment after fire_points_made.
+    pub _pad_fire: [u8; 7],
+
+    /// Different Doubles bet.
+    pub diff_doubles_bet: u64,
+
+    /// Different Doubles tracking: bitmask of unique doubles rolled.
+    /// Bit 0=1-1, 1=2-2, 2=3-3, 3=4-4, 4=5-5, 5=6-6.
+    pub diff_doubles_hits: u8,
+
+    /// Padding for u64 alignment after diff_doubles_hits.
+    pub _pad_diff: [u8; 7],
+
+    /// Ride the Line bet - wins based on pass line wins before seven-out.
+    pub ride_the_line_bet: u64,
+
+    /// Ride the Line tracking: count of pass line wins this shooter.
+    pub ride_wins_count: u8,
+
+    /// Padding for u64 alignment after ride_wins_count.
+    pub _pad_ride: [u8; 7],
+
+    /// Mugsy's Corner bet - wins on 7 (different payouts based on phase).
+    pub mugsy_bet: u64,
+
+    /// Mugsy's Corner tracking: 0=come-out, 1=point phase, 2=resolved.
+    pub mugsy_state: u8,
+
+    /// Padding for u64 alignment after mugsy_state.
+    pub _pad_mugsy: [u8; 7],
+
+    /// Hot Hand bet - must hit all 10 totals (2-6, 8-12) before 7.
+    pub hot_hand_bet: u64,
+
+    /// Hot Hand tracking: bitmask of totals hit (same as small_hits | tall_hits).
+    /// Bit 0-4 = 2,3,4,5,6 | Bit 5-9 = 8,9,10,11,12.
+    pub hot_hand_hits: u16,
+
+    /// Padding for u64 alignment after hot_hand_hits.
+    pub _pad_hot: [u8; 6],
+
+    /// Replay bet - wins when same point is made multiple times.
+    pub replay_bet: u64,
+
+    /// Replay tracking: count of times each point was made.
+    /// Index: 0=4, 1=5, 2=6, 3=8, 4=9, 5=10.
+    pub replay_counts: [u8; NUM_POINTS],
+
+    /// Padding for u64 alignment after replay_counts.
+    pub _pad_replay: [u8; 2],
+
+    /// Fielder's Choice bets (3 single-roll bets).
+    /// [0] = 2,3,4 | [1] = 4,9,10 | [2] = 10,11,12
+    pub fielders_choice: [u64; 3],
 
     // ==================== TRACKING ====================
 
@@ -135,7 +244,19 @@ impl CrapsPosition {
             + self.any_craps
             + self.yo_eleven
             + self.aces
-            + self.twelve;
+            + self.twelve
+            + self.bonus_small
+            + self.bonus_tall
+            + self.bonus_all
+            + self.fire_bet
+            + self.diff_doubles_bet
+            + self.ride_the_line_bet
+            + self.mugsy_bet
+            + self.hot_hand_bet
+            + self.replay_bet
+            + self.fielders_choice[0]
+            + self.fielders_choice[1]
+            + self.fielders_choice[2];
 
         for i in 0..NUM_POINTS {
             total += self.come_bets[i]
@@ -149,6 +270,11 @@ impl CrapsPosition {
             total += self.hardways[i];
         }
 
+        // Yes/No/Next bets (11 elements each for sums 2-12)
+        for i in 0..11 {
+            total += self.yes_bets[i] + self.no_bets[i] + self.next_bets[i];
+        }
+
         total
     }
 
@@ -160,6 +286,8 @@ impl CrapsPosition {
         self.yo_eleven = 0;
         self.aces = 0;
         self.twelve = 0;
+        self.fielders_choice = [0; 3];
+        self.next_bets = [0; 11];
     }
 
     /// Clear all bets (for new epoch).
@@ -173,8 +301,190 @@ impl CrapsPosition {
         self.dont_come_bets = [0; NUM_POINTS];
         self.dont_come_odds = [0; NUM_POINTS];
         self.place_bets = [0; NUM_POINTS];
+        self.yes_bets = [0; 11];
+        self.no_bets = [0; 11];
         self.hardways = [0; NUM_HARDWAYS];
         self.clear_single_roll_bets();
+        self.clear_bonus_bets();
+        self.clear_shooter_bets();
+    }
+
+    /// Clear bonus craps bets and reset hit tracking.
+    pub fn clear_bonus_bets(&mut self) {
+        self.bonus_small = 0;
+        self.bonus_tall = 0;
+        self.bonus_all = 0;
+        self.small_hits = 0;
+        self.tall_hits = 0;
+    }
+
+    /// Record a dice total for bonus craps tracking.
+    /// Returns (small_complete, tall_complete) indicating if either bet just won.
+    pub fn record_bonus_hit(&mut self, total: u8) -> (bool, bool) {
+        let mut small_just_completed = false;
+        let mut tall_just_completed = false;
+
+        // Small tracks totals 2-6 (bits 0-4 map to totals 2-6)
+        if total >= 2 && total <= 6 {
+            let bit = total - 2; // 2->0, 3->1, 4->2, 5->3, 6->4
+            let was_complete = self.small_hits == 0b11111;
+            self.small_hits |= 1 << bit;
+            small_just_completed = !was_complete && self.small_hits == 0b11111;
+        }
+
+        // Tall tracks totals 8-12 (bits 0-4 map to totals 8-12)
+        if total >= 8 && total <= 12 {
+            let bit = total - 8; // 8->0, 9->1, 10->2, 11->3, 12->4
+            let was_complete = self.tall_hits == 0b11111;
+            self.tall_hits |= 1 << bit;
+            tall_just_completed = !was_complete && self.tall_hits == 0b11111;
+        }
+
+        (small_just_completed, tall_just_completed)
+    }
+
+    /// Check if Small bet is complete (all 2,3,4,5,6 hit).
+    pub fn is_small_complete(&self) -> bool {
+        self.small_hits == 0b11111
+    }
+
+    /// Check if Tall bet is complete (all 8,9,10,11,12 hit).
+    pub fn is_tall_complete(&self) -> bool {
+        self.tall_hits == 0b11111
+    }
+
+    /// Check if All bet is complete (both Small and Tall complete).
+    pub fn is_all_complete(&self) -> bool {
+        self.is_small_complete() && self.is_tall_complete()
+    }
+
+    /// Check if player has any active bonus bets.
+    pub fn has_bonus_bets(&self) -> bool {
+        self.bonus_small > 0 || self.bonus_tall > 0 || self.bonus_all > 0
+    }
+
+    /// Clear come-out only side bets and their tracking (called on seven-out).
+    pub fn clear_shooter_bets(&mut self) {
+        self.fire_bet = 0;
+        self.fire_points_made = 0;
+        self.diff_doubles_bet = 0;
+        self.diff_doubles_hits = 0;
+        self.ride_the_line_bet = 0;
+        self.ride_wins_count = 0;
+        self.mugsy_bet = 0;
+        self.mugsy_state = 0;
+        self.hot_hand_bet = 0;
+        self.hot_hand_hits = 0;
+        self.replay_bet = 0;
+        self.replay_counts = [0; NUM_POINTS];
+    }
+
+    /// Check if player has any active shooter bets.
+    pub fn has_shooter_bets(&self) -> bool {
+        self.fire_bet > 0
+            || self.diff_doubles_bet > 0
+            || self.ride_the_line_bet > 0
+            || self.mugsy_bet > 0
+            || self.hot_hand_bet > 0
+            || self.replay_bet > 0
+    }
+
+    /// Record a point being made for Fire Bet tracking.
+    /// Returns the number of unique points made (for payout calculation).
+    pub fn record_fire_point(&mut self, point: u8) -> u8 {
+        if let Some(idx) = point_to_index(point) {
+            self.fire_points_made |= 1 << idx;
+        }
+        self.fire_points_made.count_ones() as u8
+    }
+
+    /// Get number of unique points made for Fire Bet.
+    pub fn fire_points_count(&self) -> u8 {
+        self.fire_points_made.count_ones() as u8
+    }
+
+    /// Record a double roll for Different Doubles tracking.
+    /// Returns the number of unique doubles hit (for payout calculation).
+    pub fn record_double(&mut self, die_value: u8) -> u8 {
+        if die_value >= 1 && die_value <= 6 {
+            let bit = die_value - 1; // 1->0, 2->1, etc.
+            self.diff_doubles_hits |= 1 << bit;
+        }
+        self.diff_doubles_hits.count_ones() as u8
+    }
+
+    /// Get number of unique doubles hit.
+    pub fn diff_doubles_count(&self) -> u8 {
+        self.diff_doubles_hits.count_ones() as u8
+    }
+
+    /// Record a pass line win for Ride the Line tracking.
+    pub fn record_ride_win(&mut self) {
+        if self.ride_wins_count < 255 {
+            self.ride_wins_count += 1;
+        }
+    }
+
+    /// Record a dice total for Hot Hand tracking.
+    /// Returns true if all 10 totals have now been hit.
+    pub fn record_hot_hand_hit(&mut self, total: u8) -> bool {
+        // Small totals 2-6 go in bits 0-4
+        if total >= 2 && total <= 6 {
+            let bit = total - 2; // 2->0, 3->1, 4->2, 5->3, 6->4
+            self.hot_hand_hits |= 1 << bit;
+        }
+        // Tall totals 8-12 go in bits 5-9
+        if total >= 8 && total <= 12 {
+            let bit = (total - 8) + 5; // 8->5, 9->6, 10->7, 11->8, 12->9
+            self.hot_hand_hits |= 1 << bit;
+        }
+        // All 10 totals hit means bits 0-9 are all set (0x3FF = 1023)
+        self.hot_hand_hits == 0x3FF
+    }
+
+    /// Get number of unique totals hit for Hot Hand.
+    pub fn hot_hand_count(&self) -> u8 {
+        self.hot_hand_hits.count_ones() as u8
+    }
+
+    /// Check if Hot Hand bet is complete (all 10 totals hit).
+    pub fn is_hot_hand_complete(&self) -> bool {
+        self.hot_hand_hits == 0x3FF
+    }
+
+    /// Record a point being made for Replay Bet tracking.
+    /// Returns the count for that point after incrementing.
+    pub fn record_replay_point(&mut self, point: u8) -> u8 {
+        if let Some(idx) = point_to_index(point) {
+            if self.replay_counts[idx] < 255 {
+                self.replay_counts[idx] += 1;
+            }
+            self.replay_counts[idx]
+        } else {
+            0
+        }
+    }
+
+    /// Get max replay count for any point.
+    pub fn max_replay_count(&self) -> u8 {
+        *self.replay_counts.iter().max().unwrap_or(&0)
+    }
+
+    /// Set Mugsy state to point phase.
+    pub fn set_mugsy_point_phase(&mut self) {
+        if self.mugsy_state == 0 {
+            self.mugsy_state = 1;
+        }
+    }
+
+    /// Check if Mugsy bet is in come-out phase.
+    pub fn is_mugsy_comeout(&self) -> bool {
+        self.mugsy_state == 0
+    }
+
+    /// Check if Mugsy bet is in point phase.
+    pub fn is_mugsy_point_phase(&self) -> bool {
+        self.mugsy_state == 1
     }
 
     /// Reset for new epoch.
@@ -222,6 +532,29 @@ pub fn hardway_to_index(hardway: u8) -> Option<usize> {
         10 => Some(3),
         _ => None,
     }
+}
+
+/// Helper: Convert dice sum (2-12) to array index (0-10) for Yes/No/Next bets.
+pub fn sum_to_index(sum: u8) -> Option<usize> {
+    if sum >= 2 && sum <= 12 {
+        Some((sum - 2) as usize)
+    } else {
+        None
+    }
+}
+
+/// Helper: Convert array index (0-10) to dice sum (2-12).
+pub fn index_to_sum(index: usize) -> Option<u8> {
+    if index <= 10 {
+        Some((index + 2) as u8)
+    } else {
+        None
+    }
+}
+
+/// Helper: Check if sum is valid for Yes/No bets (2-12 except 7).
+pub fn is_valid_yes_no_sum(sum: u8) -> bool {
+    sum >= 2 && sum <= 12 && sum != 7
 }
 
 account!(OreAccount, CrapsPosition);

@@ -1,8 +1,17 @@
 "use client";
 
-import { useCallback } from "react";
+/**
+ * DeployPanel Component - Migrated for Anza Kit compatibility
+ *
+ * This component provides RNG deployment functionality.
+ * Uses wallet adapter for signing and legacy web3.js Transaction types.
+ * Kit types are available via re-exports from hooks/lib.
+ */
+
+import { useCallback, useState, useEffect } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Transaction, PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,10 +22,11 @@ import {
   useSelectedSquareCount,
   useTotalDeployAmount,
 } from "@/store/gameStore";
-import { formatSol, solToLamports } from "@/lib/solana";
+import { ONE_RNG, formatRng, RNG_MINT } from "@/lib/solana";
 import { ALL_DICE_COMBINATIONS } from "@/lib/dice";
 import { createDeployInstruction } from "@/lib/program";
 import { useBoard } from "@/hooks/useBoard";
+import { useNetworkStore } from "@/store/networkStore";
 import { toast } from "sonner";
 import { Rocket, Coins, Grid3X3, Dices, Loader2 } from "lucide-react";
 
@@ -31,9 +41,10 @@ export function DeployPanel({
   disabled = false,
   baseReward = 0.15,
 }: DeployPanelProps) {
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
   const { connection } = useConnection();
-  const { board, loading: boardLoading, error: boardError } = useBoard();
+  const { board, round, loading: boardLoading, error: boardError, refetch: refetchBoard } = useBoard();
+  const { network } = useNetworkStore();
   const {
     deployAmount,
     setDeployAmount,
@@ -46,6 +57,27 @@ export function DeployPanel({
 
   const selectedCount = useSelectedSquareCount();
   const totalAmount = useTotalDeployAmount();
+  const [rngBalance, setRngBalance] = useState<number | null>(null);
+
+  // Fetch RNG balance when wallet changes
+  useEffect(() => {
+    async function fetchBalance() {
+      if (!publicKey || !connected) {
+        setRngBalance(null);
+        return;
+      }
+      try {
+        const ata = await getAssociatedTokenAddress(new PublicKey(RNG_MINT), publicKey);
+        const balance = await connection.getTokenAccountBalance(ata);
+        setRngBalance(Number(balance.value.uiAmount || 0));
+      } catch {
+        setRngBalance(0);
+      }
+    }
+    fetchBalance();
+  }, [publicKey, connected, connection]);
+
+  const hasInsufficientFunds = rngBalance !== null && totalAmount > rngBalance;
 
   // Calculate average multiplier based on selected combinations
   const getSelectionInfo = () => {
@@ -89,18 +121,51 @@ export function DeployPanel({
       return;
     }
 
+    if (hasInsufficientFunds) {
+      toast.error(`Insufficient RNG balance. You have ${rngBalance?.toFixed(2)} RNG but need ${totalAmount.toFixed(2)} RNG`);
+      return;
+    }
+
     try {
       setIsDeploying(true);
+
+      // Check if round has expired and start a new one if needed
+      if (round && board) {
+        const slotsRemaining = Number(round.expiresAt) - Number(board.currentSlot);
+        if (slotsRemaining < 0 || Number(round.expiresAt) <= Number(board.currentSlot)) {
+          toast.info("Round expired. Starting new round...");
+          try {
+            const startResponse = await fetch("/api/start-round", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ network, duration: 5000 }), // ~33 minutes
+            });
+            const startData = await startResponse.json();
+            if (!startData.success) {
+              throw new Error(startData.error || "Failed to start round");
+            }
+            toast.success(`Round started! ${startData.slotsRemaining || startData.duration} slots remaining`);
+            refetchBoard();
+            // Small delay to let board data refresh
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : "Unknown error";
+            toast.error(`Failed to start round: ${errMsg}`);
+            return;
+          }
+        }
+      }
+
       toast.info("Preparing transaction...");
 
-      // Convert SOL to lamports
-      const amountLamports = BigInt(Math.floor(totalAmount * LAMPORTS_PER_SOL));
+      // Convert RNG to base units (9 decimals)
+      const amountBaseUnits = BigInt(Math.floor(totalAmount * Number(ONE_RNG)));
 
       // Build deploy instruction
       const deployIx = createDeployInstruction(
         publicKey,
         publicKey, // authority is same as signer
-        amountLamports,
+        amountBaseUnits,
         board.roundId,
         selectedSquares
       );
@@ -113,9 +178,23 @@ export function DeployPanel({
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
-      // Send transaction
+      // Use signTransaction + sendRawTransaction to avoid cross-origin iframe issues
+      // This pattern works more reliably with browser extension wallets
       toast.info("Please confirm in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+
+      if (!signTransaction) {
+        throw new Error("Wallet does not support signTransaction");
+      }
+
+      // Sign the transaction
+      const signedTx = await signTransaction(transaction);
+
+      // Send the raw transaction
+      toast.info("Sending transaction...");
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
       // Validate signature
       if (!signature || typeof signature !== 'string' || signature.length === 0) {
@@ -130,7 +209,7 @@ export function DeployPanel({
       });
 
       toast.success(
-        `Deployed ${formatSol(solToLamports(totalAmount))} SOL to ${selectedCount} squares!`
+        `Deployed ${formatRng(amountBaseUnits)} RNG to ${selectedCount} squares!`
       );
       onDeploy?.();
     } catch (error) {
@@ -150,11 +229,16 @@ export function DeployPanel({
     selectedCount,
     totalAmount,
     board,
+    round,
     selectedSquares,
     connection,
-    sendTransaction,
+    signTransaction,
     setIsDeploying,
     onDeploy,
+    hasInsufficientFunds,
+    rngBalance,
+    network,
+    refetchBoard,
   ]);
 
   return (
@@ -162,13 +246,13 @@ export function DeployPanel({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Rocket className="h-5 w-5" />
-          Deploy SOL
+          Deploy RNG
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Amount Input */}
         <div className="space-y-2">
-          <Label htmlFor="amount">Amount per Square (SOL)</Label>
+          <Label htmlFor="amount">Amount per Square (RNG)</Label>
           <div className="flex gap-2">
             <Input
               id="amount"
@@ -234,10 +318,23 @@ export function DeployPanel({
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total Deployment</span>
-            <span className="font-mono font-bold text-chart-2">
-              {totalAmount.toFixed(2)} SOL
+            <span className={`font-mono font-bold ${hasInsufficientFunds ? "text-destructive" : "text-chart-2"}`}>
+              {totalAmount.toFixed(2)} RNG
             </span>
           </div>
+          {connected && rngBalance !== null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Your RNG Balance</span>
+              <span className={`font-mono font-bold ${hasInsufficientFunds ? "text-destructive" : ""}`}>
+                {rngBalance.toFixed(2)} RNG
+              </span>
+            </div>
+          )}
+          {hasInsufficientFunds && (
+            <div className="text-xs text-destructive">
+              Insufficient balance! Reduce amount or select fewer squares.
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground flex items-center gap-1">
               <Dices className="h-4 w-4" />
@@ -292,7 +389,7 @@ export function DeployPanel({
           size="lg"
           onClick={handleDeploy}
           disabled={
-            disabled || isDeploying || boardLoading || !connected || selectedCount === 0 || !board
+            disabled || isDeploying || boardLoading || !connected || selectedCount === 0 || !board || hasInsufficientFunds
           }
         >
           {!connected ? (
@@ -310,7 +407,7 @@ export function DeployPanel({
           ) : (
             <>
               <Rocket className="mr-2 h-5 w-5" />
-              Deploy {totalAmount.toFixed(2)} SOL
+              Deploy {totalAmount.toFixed(2)} RNG
             </>
           )}
         </Button>

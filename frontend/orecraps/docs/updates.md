@@ -576,8 +576,6 @@ useEffect(() => {
 
 ---
 
-# Project Updates
-
 ## 2025-11-28: Composite Hooks - Reducing Tight Coupling
 
 ### Problem
@@ -1487,6 +1485,290 @@ export const CrapsBettingPanel = memo(CrapsBettingPanelComponent);
 
 ### Notes
 The component already had excellent internal optimization with useCallback for all handlers, so wrapping in memo completes the performance optimization strategy.
+
+---
+
+## 2025-11-28: SOL → RNG Token Migration (Frontend)
+
+### Background
+The on-chain program was updated to use RNG tokens instead of native SOL for all betting and mining operations. RNG is a universal staking token with 9 decimals (ONE_RNG = 1_000_000_000n), matching the lamports scale.
+
+### Changes Made
+
+#### Constants and Utilities
+- Replaced `LAMPORTS_PER_SOL` with `ONE_RNG` from `@/lib/solana`
+- Both values are `1_000_000_000n`, so conversion logic remains the same
+- Updated `formatSol` → `formatRng` and `formatCrap` for display
+
+#### Components Updated
+
+**`/src/components/deploy/DeployPanel.tsx`**:
+- Import: `ONE_RNG, formatRng` from `@/lib/solana`
+- Amount conversion: `BigInt(Math.floor(totalAmount * Number(ONE_RNG)))`
+- UI text: "Deploy SOL" → "Deploy RNG", "Amount per Square (SOL)" → "Amount per Square (RNG)"
+
+**`/src/components/craps/CrapsBettingPanel.tsx`**:
+- Import: `ONE_RNG, formatRng` from `@/lib/solana`
+- Variable renames: `houseBankrollSOL` → `houseBankrollRNG`
+- All display formatting uses `ONE_RNG` divisor
+- Toast messages: "Claimed X SOL" → "Claimed X RNG"
+- UI labels: All "SOL" text replaced with "RNG"
+
+**`/src/components/craps/CrapsGameStatus.tsx`**:
+- Import: `ONE_RNG` from `@/lib/solana`
+- Helper function renamed: `formatSOL` → `formatRNG`
+- Display labels updated throughout
+
+**`/src/components/stats/PlayerStats.tsx`**:
+- Interface updated: `rewardsSol` → `rewardsRng`, `rewardsCrap` → `rewardsCrap`
+- Props: `onClaimSol` → `onClaimRng`
+- Display formatting uses `formatRng` and `formatCrap`
+
+**`/src/components/simulation/BotSimulationPanel.tsx`**:
+- P&L display: "SOL" → "RNG"
+
+#### Hooks Updated
+
+**`/src/hooks/composites/useBetting.ts`**:
+- Import: `ONE_RNG` from `@/lib/solana`
+- Computed value: `houseBankrollSOL` → `houseBankrollRNG`
+- Amount conversion uses `ONE_RNG`
+
+#### Stores Updated
+
+**`/src/store/crapsStore.ts`**:
+- Import: `ONE_RNG` from `@/lib/solana`
+- Selector: `useHouseBankroll` uses `ONE_RNG` for division
+- Helper: `formatRngBaseUnits` for display conversion
+
+#### Services Updated
+
+**`/src/services/CrapsGameService.ts`**:
+- Import: `ONE_RNG` from `@/lib/solana`
+- Amount calculation: `BigInt(Math.floor(bet.amount * Number(ONE_RNG)))`
+
+**`/src/services/transactionService.ts`**:
+- Comment updated: `// ONE_RNG` instead of `// LAMPORTS_PER_SOL`
+
+### Key Pattern
+
+All conversions follow this pattern:
+```typescript
+// User input (RNG as decimal) → Base units (bigint)
+const amountBaseUnits = BigInt(Math.floor(userAmount * Number(ONE_RNG)));
+
+// Base units (bigint) → Display (RNG as decimal)
+const displayAmount = Number(baseUnits) / Number(ONE_RNG);
+```
+
+### Token Definitions
+
+```typescript
+// /src/lib/solana.ts
+export const RNG_MINT = new PublicKey("RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump");
+export const CRAP_MINT = new PublicKey("CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump");
+export const ONE_RNG = 1_000_000_000n; // 9 decimals
+export const ONE_CRAP = 1_000_000_000n; // 9 decimals
+```
+
+### Build Status
+- Build passes successfully
+- All TypeScript type checks pass
+- Pre-existing test file errors are unrelated to this migration
+
+### Testing Notes
+- Devnet faucet provides 10 RNG to first 1000 players
+- RNG is used to bet on mining squares (1 of 36)
+- CRAP tokens are earned as rewards
+- No SOL required for gameplay (only for transaction fees)
+
+---
+
+## 2025-11-30: Devnet Testing Blocker - Missing Token Mints
+
+### Problem
+Devnet testing of the craps betting functionality is blocked because the required SPL token mints do not exist on devnet.
+
+### Missing Accounts on Devnet
+
+**CRAP_MINT**: `CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`
+- Status: `AccountNotFound`
+- Required for: All betting operations (PlaceCrapsBet, SettleCraps, ClaimWinnings)
+
+**RNG_MINT**: `RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`
+- Status: `AccountNotFound`
+- Required for: Mining operations (Deploy, Checkpoint, ClaimSOL)
+
+### What Works on Devnet
+
+- ✅ RPC Connection (Helius devnet endpoint)
+- ✅ Program deployed and executable (`JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK`)
+- ✅ Board PDA initialized (`FKUBSpmzd2gDdoenmwJRGiZJVcXL5kFD3yeWBYtergMn`)
+- ✅ Wallet balance (6.11 SOL on test wallet)
+
+### What Fails on Devnet
+
+- ❌ All bet placements fail with `NotEnoughAccountKeys`
+- ❌ Root cause: Token mint accounts don't exist, causing ATA derivation to fail
+- ❌ Program expects SPL token transfers which require valid mint accounts
+
+### Error Details
+
+From devnet test report:
+```json
+{
+  "error": "NotEnoughAccountKeys",
+  "logs": [
+    "Program JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK invoke [1]",
+    "Program log: PlaceCrapsBet: type=0, point=0, amount=1000000",
+    "Program JDcrnBXPW4o1G7bQgPHZZGtUPMFDLrosvqhTTHRWxXzK failed: insufficient account keys for instruction"
+  ]
+}
+```
+
+### Why This Happens
+
+1. The token mint addresses (`CRAPqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`, `RNGqnVVhpuFfWBJJbiZ3BtG1MrXF3cvD3mLSXpnPump`) are hardcoded
+2. These addresses are "vanity" addresses created specifically for mainnet/localnet
+3. On localnet, we load these as JSON accounts via `--account` flag
+4. On devnet, these accounts were never created
+
+### Resolution Options
+
+**Option 1: Deploy Token Mints to Devnet**
+- Requires mint authority keypairs to create tokens at exact addresses
+- If vanity keypairs are available, deploy mints to devnet
+- Then create program initialization to set up house bankroll
+
+**Option 2: Use Different Devnet-Specific Addresses**
+- Create new token mints on devnet with any address
+- Update frontend/program to use environment-specific addresses
+- Requires program recompilation with devnet addresses
+
+**Option 3: Continue with Localnet Testing Only**
+- Localnet works perfectly with loaded account JSON files
+- Comprehensive testing can be done on localnet
+- Skip devnet until mainnet deployment
+
+### Current Status
+
+Devnet testing is **blocked** pending resolution of token mint deployment. All other infrastructure tests pass. Localnet testing remains fully functional with all 26 bet types working correctly.
+
+### Files Affected
+
+- `devnet-comprehensive-test.mjs` - Test script with proper rate limiting
+- `devnet-test-report.json` - Test results showing failures
+- `.env.local` - Devnet configuration
+
+---
+
+## 2025-11-28: New Craps Side Bets Implementation
+
+### Background
+Implemented 7 new craps side bets from WizardOfOdds.com. These bets can only be placed during come-out roll and persist until seven-out.
+
+### Side Bets Implemented
+
+1. **Fire Bet** - Wins based on unique points made before seven-out
+   - 4 points: 24:1
+   - 5 points: 249:1
+   - 6 points: 999:1
+
+2. **Different Doubles** - Wins when unique doubles are rolled before 7
+   - 3 unique doubles: 4:1
+   - 4 unique doubles: 8:1
+   - 5 unique doubles: 15:1
+   - 6 unique doubles: 100:1
+
+3. **Ride the Line** - Wins based on pass line wins before seven-out
+   - 3 wins: 1:1, escalating to 11+ wins: 500:1
+
+4. **Mugsy's Corner** - Wins when 7 is rolled
+   - Come-out 7: 2:1
+   - Point phase 7: 3:1
+
+5. **Hot Hand** - Must hit all 10 totals (2-6, 8-12) before 7
+   - 9 totals: 20:1
+   - All 10 totals: 80:1
+
+6. **Replay Bet** - Wins when same point is made multiple times
+   - 3x: 8:1, 4x: 80:1, escalating payouts
+
+7. **Fielder's Choice** - Three single-roll bets (come-out only)
+   - [0] 2,3,4: 4:1
+   - [1] 4,9,10: 2:1
+   - [2] 10,11,12: 4:1
+
+### Backend Changes
+
+**`/api/src/consts.rs`**:
+- Added payout constants for all side bets
+- Fire Bet: `FIRE_4_PAYOUT_NUM/DEN`, `FIRE_5_PAYOUT_NUM/DEN`, `FIRE_6_PAYOUT_NUM/DEN`
+- Different Doubles: `DIFF_DOUBLES_3_PAYOUT_NUM/DEN` through `DIFF_DOUBLES_6_PAYOUT_NUM/DEN`
+- Ride the Line: `RIDE_3_PAYOUT_NUM/DEN` through `RIDE_11_PAYOUT_NUM/DEN`
+- Mugsy's Corner: `MUGSY_COMEOUT_PAYOUT_NUM/DEN`, `MUGSY_POINT_PAYOUT_NUM/DEN`
+- Hot Hand: `HOT_HAND_9_PAYOUT_NUM/DEN`, `HOT_HAND_10_PAYOUT_NUM/DEN`
+- Replay Bet: `REPLAY_3_PAYOUT_NUM/DEN` through `REPLAY_8_PAYOUT_NUM/DEN`
+- Fielder's Choice: `FIELDERS_0_PAYOUT_NUM/DEN`, `FIELDERS_1_PAYOUT_NUM/DEN`, `FIELDERS_2_PAYOUT_NUM/DEN`
+
+**`/api/src/state/craps_position.rs`**:
+- Added new fields for side bet amounts and tracking:
+  - `fire_bet: u64`, `fire_points_made: u8`
+  - `diff_doubles_bet: u64`, `diff_doubles_hits: u8`
+  - `ride_the_line_bet: u64`, `ride_wins_count: u8`
+  - `mugsy_bet: u64`, `mugsy_state: u8`
+  - `hot_hand_bet: u64`, `hot_hand_hits: u16`
+  - `replay_bet: u64`, `replay_counts: [u8; 6]`
+  - `fielders_choice: [u64; 3]`
+- Added helper methods:
+  - `clear_shooter_bets()`, `has_shooter_bets()`
+  - `record_fire_point()`, `fire_points_count()`
+  - `record_double()`, `diff_doubles_count()`
+  - `record_ride_win()`
+  - `record_hot_hand_hit()`, `hot_hand_count()`, `is_hot_hand_complete()`
+  - `record_replay_point()`, `max_replay_count()`
+  - `set_mugsy_point_phase()`, `is_mugsy_comeout()`, `is_mugsy_point_phase()`
+- Fixed struct padding with explicit `_pad_*` fields for Pod derive
+
+**`/api/src/instruction.rs`**:
+- Added new bet types to `CrapsBetType` enum:
+  - `BonusSmall = 16`, `BonusTall = 17`, `BonusAll = 18`
+  - `FireBet = 19`, `DiffDoubles = 20`, `RideTheLine = 21`
+  - `MugsyCorner = 22`, `HotHand = 23`, `ReplayBet = 24`
+  - `FieldersChoice = 25`
+
+**`/program/src/craps/settle.rs`**:
+- Added settlement logic for all new side bets
+- Added dice extraction (`die1`, `die2`) from winning square
+- Added payout helper functions:
+  - `get_diff_doubles_payout()`, `get_fire_bet_payout()`
+  - `get_ride_the_line_payout()`, `get_replay_bet_payout()`
+
+### Frontend Changes
+
+**`/lib/program.ts`**:
+- Added new bet types to `CrapsBetType` enum (matching backend)
+
+**`/components/craps/CrapsBettingPanel.tsx`**:
+- Added new "Side" tab to betting panel (5th tab)
+- Added handlers for all new side bets
+- Side bets disabled when not on come-out roll
+- Warning message displayed during point phase
+
+**`/store/crapsStore.ts`**:
+- Added bet display info for all new bet types in `getBetDisplayInfo()`
+- Added payout and description info for each bet
+
+### Bet Availability
+- Side bets are only available during **come-out roll**
+- Side bets are disabled (grayed out) during point phase
+- Warning message: "Side bets can only be placed on come-out roll"
+- Fielder's Choice is a single-roll bet but can only be placed on come-out
+
+### Build Status
+- Program builds successfully (`cargo build-sbf`)
+- Frontend builds successfully (`npm run build`)
+- All TypeScript checks pass
 
 ---
 
