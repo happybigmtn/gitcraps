@@ -28,7 +28,11 @@ import {
   createDeployInstruction,
   createCheckpointInstruction,
   createClaimSOLInstruction,
+  createPlaceRouletteBetInstruction,
+  createSpinRouletteInstruction,
+  createClaimRouletteWinningsInstruction,
   CrapsBetType,
+  RouletteBetType,
 } from "@/lib/program";
 
 const debug = createDebugger("TransactionService");
@@ -668,6 +672,117 @@ export class TransactionService {
     }
 
     const instruction = createClaimSOLInstruction(wallet.publicKey);
+
+    return this.sendWithWallet([instruction], wallet, connection, options);
+  }
+
+  // ============================================================================
+  // TYPED TRANSACTION BUILDERS - ROULETTE OPERATIONS
+  // ============================================================================
+
+  /**
+   * Place one or more roulette bets
+   *
+   * @param wallet - Wallet to sign the transaction
+   * @param connection - Connection to use
+   * @param bets - Array of bets to place
+   * @param options - Transaction options
+   * @returns Transaction result
+   */
+  async placeRouletteBets(
+    wallet: WalletContextState,
+    connection: Connection,
+    bets: { betType: RouletteBetType; betIndex: number; amount: number }[],
+    options: SendTransactionOptions = {}
+  ): Promise<TransactionResult & { betsPlaced?: number }> {
+    if (!wallet.publicKey) {
+      return {
+        success: false,
+        error: "Wallet not connected",
+      };
+    }
+
+    if (bets.length === 0) {
+      return {
+        success: false,
+        error: "No bets provided",
+      };
+    }
+
+    try {
+      // Build instructions for all bets
+      const instructions = bets.map((bet) => {
+        const amountBaseUnits = BigInt(
+          Math.floor(bet.amount * 1_000_000_000) // ONE_ROUL
+        );
+        return createPlaceRouletteBetInstruction(
+          wallet.publicKey!,
+          bet.betType,
+          bet.betIndex,
+          amountBaseUnits
+        );
+      });
+
+      const result = await this.sendWithWallet(instructions, wallet, connection, options);
+
+      return {
+        ...result,
+        betsPlaced: result.success ? bets.length : 0,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: this.transformError(error),
+      };
+    }
+  }
+
+  /**
+   * Spin the roulette wheel (settle bets)
+   *
+   * @param wallet - Wallet to sign the transaction
+   * @param connection - Connection to use
+   * @param options - Transaction options
+   * @returns Transaction result
+   */
+  async settleRoulette(
+    wallet: WalletContextState,
+    connection: Connection,
+    options: SendTransactionOptions = {}
+  ): Promise<TransactionResult> {
+    if (!wallet.publicKey) {
+      return {
+        success: false,
+        error: "Wallet not connected",
+      };
+    }
+
+    const instruction = createSpinRouletteInstruction(wallet.publicKey);
+
+    return this.sendWithWallet([instruction], wallet, connection, options);
+  }
+
+  /**
+   * Claim roulette winnings
+   *
+   * @param wallet - Wallet to sign the transaction
+   * @param connection - Connection to use
+   * @param options - Transaction options
+   * @returns Transaction result
+   */
+  async claimRouletteWinnings(
+    wallet: WalletContextState,
+    connection: Connection,
+    options: SendTransactionOptions = {}
+  ): Promise<TransactionResult> {
+    if (!wallet.publicKey) {
+      return {
+        success: false,
+        error: "Wallet not connected",
+      };
+    }
+
+    const instruction = createClaimRouletteWinningsInstruction(wallet.publicKey);
 
     return this.sendWithWallet([instruction], wallet, connection, options);
   }

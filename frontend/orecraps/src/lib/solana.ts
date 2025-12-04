@@ -99,6 +99,68 @@ export const CRAP_DECIMALS = 9;
 export const ONE_RNG = 1_000_000_000n; // 10^9
 export const ONE_CRAP = 1_000_000_000n; // 10^9
 
+// ============================================================================
+// CASINO GAME TOKENS - All use CRAP_MINT as placeholder until game-specific tokens are created
+// Each game will have its own token for betting and rewards
+// ============================================================================
+
+// Token decimal constant for all game tokens (same as RNG/CRAP)
+export const ONE_TOKEN = ONE_CRAP; // 10^9 base units
+
+// Game-specific token aliases - currently all point to CRAP for simplicity
+// These can be updated to point to different mints when game-specific tokens are created
+export const CARAT_MINT = CRAP_MINT;  // Baccarat token
+export const BJ_MINT = CRAP_MINT;     // Blackjack token
+export const ROUL_MINT = CRAP_MINT;   // Roulette token
+export const WAR_MINT = CRAP_MINT;    // Casino War token
+export const SICO_MINT = CRAP_MINT;   // Sic Bo token
+export const TCP_MINT = CRAP_MINT;    // Three Card Poker token
+export const VPK_MINT = CRAP_MINT;    // Video Poker token
+export const UTH_MINT = CRAP_MINT;    // Ultimate Texas Hold'em token
+
+// Convenience aliases using ONE_TOKEN for game token amounts
+export const ONE_CARAT = ONE_TOKEN;
+export const ONE_BJ = ONE_TOKEN;
+export const ONE_ROUL = ONE_TOKEN;
+export const ONE_WAR = ONE_TOKEN;
+export const ONE_SICO = ONE_TOKEN;
+export const ONE_TCP = ONE_TOKEN;
+export const ONE_VPK = ONE_TOKEN;
+export const ONE_UTH = ONE_TOKEN;
+
+// Getters for game-specific tokens (currently all return CRAP mint)
+export function getCaratMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getBjMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getRoulMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getWarMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getSicoMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getTcpMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getVpkMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
+export function getUthMint(network?: Network): PublicKey {
+  return getCrapMint(network);
+}
+
 // Slot timing
 export const SLOT_DURATION_MS = 400; // ~0.4 seconds per slot
 

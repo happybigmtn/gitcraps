@@ -1230,6 +1230,1112 @@ export async function getEntropyVarPDAKit(board: Address, id: bigint): Promise<{
 }
 
 // ============================================================================
+// ROULETTE TYPES AND CONSTANTS
+// ============================================================================
+
+/**
+ * Roulette bet types matching on-chain enum
+ */
+export enum RouletteBetType {
+  StraightUp = 0,  // Single number (0-36 or 37 for 00)
+  Split = 1,       // Two adjacent numbers
+  Street = 2,      // Three numbers in a row
+  Corner = 3,      // Four numbers in a square
+  Line = 4,        // Six numbers (two rows)
+  Dozen = 5,       // 1-12, 13-24, or 25-36
+  Column = 6,      // Column of 12 numbers
+  Red = 7,         // All red numbers
+  Black = 8,       // All black numbers
+  Odd = 9,         // All odd numbers
+  Even = 10,       // All even numbers
+  Low = 11,        // 1-18
+  High = 12,       // 19-36
+}
+
+/**
+ * Roulette game state (on-chain account)
+ */
+export interface RouletteGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  wheelType: number; // 0 = American (0, 00), 1 = European (0 only)
+  lastResult: number; // 0-36 for numbers, 37 for 00, 255 for none
+  bump: number;
+}
+
+/**
+ * Roulette player position (on-chain account)
+ */
+export interface RoulettePosition {
+  authority: PublicKey;
+  epochId: bigint;
+  straightUp: bigint[]; // 38 numbers (0-36 + 00)
+  splits: bigint[];     // Split bets
+  dozens: bigint[];     // 3 dozens
+  columns: bigint[];    // 3 columns
+  red: bigint;
+  black: bigint;
+  odd: bigint;
+  even: bigint;
+  low: bigint;
+  high: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  pendingWinnings: bigint;
+  bump: number;
+}
+
+/**
+ * Roulette bet display info
+ */
+export function getRouletteBetDisplayInfo(betType: RouletteBetType): { name: string; payout: string } {
+  switch (betType) {
+    case RouletteBetType.StraightUp: return { name: "Straight Up", payout: "35:1" };
+    case RouletteBetType.Split: return { name: "Split", payout: "17:1" };
+    case RouletteBetType.Street: return { name: "Street", payout: "11:1" };
+    case RouletteBetType.Corner: return { name: "Corner", payout: "8:1" };
+    case RouletteBetType.Line: return { name: "Line", payout: "5:1" };
+    case RouletteBetType.Dozen: return { name: "Dozen", payout: "2:1" };
+    case RouletteBetType.Column: return { name: "Column", payout: "2:1" };
+    case RouletteBetType.Red: return { name: "Red", payout: "1:1" };
+    case RouletteBetType.Black: return { name: "Black", payout: "1:1" };
+    case RouletteBetType.Odd: return { name: "Odd", payout: "1:1" };
+    case RouletteBetType.Even: return { name: "Even", payout: "1:1" };
+    case RouletteBetType.Low: return { name: "1-18", payout: "1:1" };
+    case RouletteBetType.High: return { name: "19-36", payout: "1:1" };
+    default: return { name: "Unknown", payout: "0:1" };
+  }
+}
+
+// Red numbers on a standard roulette wheel (array for component use with .includes())
+export const ROULETTE_RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+
+// Set version for O(1) lookup in getRouletteColor
+const RED_NUMBERS_SET = new Set(ROULETTE_RED_NUMBERS);
+
+/**
+ * Get the color of a roulette number
+ * @param num - Number 0-36 or 37 for 00
+ * @returns "red" | "black" | "green"
+ */
+export function getRouletteColor(num: number): "red" | "black" | "green" {
+  if (num === 0 || num === 37) return "green"; // 0 and 00 are green
+  if (RED_NUMBERS_SET.has(num)) return "red";
+  return "black";
+}
+
+/**
+ * Get the display name for a roulette number
+ * @param num - Number 0-36 or 37 for 00, 255 for none
+ * @returns Display string
+ */
+export function getRouletteNumberName(num: number): string {
+  if (num === 255) return "—"; // No result
+  if (num === 37) return "00";
+  return num.toString();
+}
+
+// ============================================================================
+// ROULETTE PDA DERIVATIONS
+// ============================================================================
+
+/**
+ * Get Roulette Game PDA (singleton)
+ */
+export function rouletteGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("roulette_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+/**
+ * Get Roulette Position PDA for a player
+ */
+export function roulettePositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("roulette_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+/**
+ * Get Roulette Vault PDA (token account for house bankroll)
+ */
+export function rouletteVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("roulette_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// ============================================================================
+// ROULETTE STATE PARSING
+// ============================================================================
+
+/**
+ * Parse RouletteGame from account data
+ */
+export function parseRouletteGame(data: Buffer): RouletteGame {
+  // Account discriminator: 8 bytes
+  let offset = 8;
+
+  const epochId = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const houseBankroll = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const wheelType = data.readUInt8(offset);
+  offset += 1;
+
+  const lastResult = data.readUInt8(offset);
+  offset += 1;
+
+  const bump = data.readUInt8(offset);
+
+  return {
+    epochId,
+    houseBankroll,
+    wheelType,
+    lastResult,
+    bump,
+  };
+}
+
+/**
+ * Parse RoulettePosition from account data
+ */
+export function parseRoulettePosition(data: Buffer): RoulettePosition {
+  // Account discriminator: 8 bytes
+  let offset = 8;
+
+  const authority = new PublicKey(data.subarray(offset, offset + 32));
+  offset += 32;
+
+  const epochId = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  // 38 straight up bets (0-36 + 00)
+  const straightUp: bigint[] = [];
+  for (let i = 0; i < 38; i++) {
+    straightUp.push(data.readBigUInt64LE(offset));
+    offset += 8;
+  }
+
+  // 16 split bets (simplified)
+  const splits: bigint[] = [];
+  for (let i = 0; i < 16; i++) {
+    splits.push(data.readBigUInt64LE(offset));
+    offset += 8;
+  }
+
+  // 3 dozen bets
+  const dozens: bigint[] = [];
+  for (let i = 0; i < 3; i++) {
+    dozens.push(data.readBigUInt64LE(offset));
+    offset += 8;
+  }
+
+  // 3 column bets
+  const columns: bigint[] = [];
+  for (let i = 0; i < 3; i++) {
+    columns.push(data.readBigUInt64LE(offset));
+    offset += 8;
+  }
+
+  const red = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const black = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const odd = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const even = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const low = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const high = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const totalWagered = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const totalWon = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const totalLost = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const pendingWinnings = data.readBigUInt64LE(offset);
+  offset += 8;
+
+  const bump = data.readUInt8(offset);
+
+  return {
+    authority,
+    epochId,
+    straightUp,
+    splits,
+    dozens,
+    columns,
+    red,
+    black,
+    odd,
+    even,
+    low,
+    high,
+    totalWagered,
+    totalWon,
+    totalLost,
+    pendingWinnings,
+    bump,
+  };
+}
+
+// ============================================================================
+// ROULETTE INSTRUCTION BUILDERS
+// ============================================================================
+
+// Roulette instruction discriminators (placeholder - update when on-chain program is built)
+const ROULETTE_PLACE_BET = 30;
+const ROULETTE_SPIN = 31;
+const ROULETTE_CLAIM = 32;
+const ROULETTE_FUND_HOUSE = 33;
+
+/**
+ * Create PlaceRouletteBet instruction
+ * Places a bet on the roulette table
+ */
+export function createPlaceRouletteBetInstruction(
+  signer: PublicKey,
+  betType: RouletteBetType,
+  betIndex: number,
+  amount: bigint
+): TransactionInstruction {
+  const [rouletteGameAddress] = rouletteGamePDA();
+  const [roulettePositionAddress] = roulettePositionPDA(signer);
+  const [rouletteVaultAddress] = rouletteVaultPDA();
+
+  // Get user's ROUL token account (using CRAP_MINT as placeholder)
+  const userTokenAccount = getAssociatedTokenAddressSync(CRAP_MINT, signer);
+
+  // Instruction data: discriminator (1) + bet_type (1) + bet_index (1) + amount (8)
+  const data = Buffer.alloc(11);
+  data.writeUInt8(ROULETTE_PLACE_BET, 0);
+  data.writeUInt8(betType, 1);
+  data.writeUInt8(betIndex, 2);
+  data.writeBigUInt64LE(amount, 3);
+
+  return new TransactionInstruction({
+    programId: ORE_PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: rouletteGameAddress, isSigner: false, isWritable: true },
+      { pubkey: roulettePositionAddress, isSigner: false, isWritable: true },
+      { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: rouletteVaultAddress, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Create SpinRoulette instruction
+ * Spins the wheel and settles all active bets
+ */
+export function createSpinRouletteInstruction(
+  signer: PublicKey
+): TransactionInstruction {
+  const [rouletteGameAddress] = rouletteGamePDA();
+  const [roulettePositionAddress] = roulettePositionPDA(signer);
+
+  const data = Buffer.alloc(1);
+  data.writeUInt8(ROULETTE_SPIN, 0);
+
+  return new TransactionInstruction({
+    programId: ORE_PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: rouletteGameAddress, isSigner: false, isWritable: true },
+      { pubkey: roulettePositionAddress, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+}
+
+/**
+ * Create ClaimRouletteWinnings instruction
+ */
+export function createClaimRouletteWinningsInstruction(
+  signer: PublicKey
+): TransactionInstruction {
+  const [rouletteGameAddress] = rouletteGamePDA();
+  const [roulettePositionAddress] = roulettePositionPDA(signer);
+  const [rouletteVaultAddress] = rouletteVaultPDA();
+
+  const userTokenAccount = getAssociatedTokenAddressSync(CRAP_MINT, signer);
+
+  const data = Buffer.alloc(1);
+  data.writeUInt8(ROULETTE_CLAIM, 0);
+
+  return new TransactionInstruction({
+    programId: ORE_PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: rouletteGameAddress, isSigner: false, isWritable: true },
+      { pubkey: roulettePositionAddress, isSigner: false, isWritable: true },
+      { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: rouletteVaultAddress, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Create FundRouletteHouse instruction
+ */
+export function createFundRouletteHouseInstruction(
+  signer: PublicKey,
+  amount: bigint
+): TransactionInstruction {
+  const [rouletteGameAddress] = rouletteGamePDA();
+  const [rouletteVaultAddress] = rouletteVaultPDA();
+
+  const userTokenAccount = getAssociatedTokenAddressSync(CRAP_MINT, signer);
+
+  const data = Buffer.alloc(9);
+  data.writeUInt8(ROULETTE_FUND_HOUSE, 0);
+  data.writeBigUInt64LE(amount, 1);
+
+  return new TransactionInstruction({
+    programId: ORE_PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: rouletteGameAddress, isSigner: false, isWritable: true },
+      { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: rouletteVaultAddress, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+// ============================================================================
+// CASINO WAR TYPES AND FUNCTIONS
+// ============================================================================
+
+export interface WarGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  reservedPayouts: bigint;
+  totalWagered: bigint;
+  totalPaid: bigint;
+  totalGames: bigint;
+  warsTriggered: bigint;
+  surrenders: bigint;
+  bump: number;
+}
+
+export interface WarPosition {
+  authority: PublicKey;
+  epochId: bigint;
+  roundId: bigint;
+  state: number; // 0=None, 1=Betting, 2=Dealt, 3=War, 4=Settled
+  anteBet: bigint;
+  tieBet: bigint;
+  warBet: bigint;
+  playerCard: number;
+  dealerCard: number;
+  playerWarCard: number; // Card dealt during war
+  dealerWarCard: number; // Card dealt during war
+  pendingWinnings: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  bump: number;
+}
+
+// War game states
+export const WAR_STATE_NONE = 0;
+export const WAR_STATE_BETTING = 1;
+export const WAR_STATE_DEALT = 2;
+export const WAR_STATE_WAR = 3;
+export const WAR_STATE_SETTLED = 4;
+
+// War PDAs
+export function warGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("war_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function warPositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("war_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function warVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("war_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// Parse War game from account data
+export function parseWarGame(data: Buffer): WarGame {
+  let offset = 8; // Skip discriminator
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const houseBankroll = readBigUInt64LE(data, offset); offset += 8;
+  const reservedPayouts = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalPaid = readBigUInt64LE(data, offset); offset += 8;
+  const totalGames = readBigUInt64LE(data, offset); offset += 8;
+  const warsTriggered = readBigUInt64LE(data, offset); offset += 8;
+  const surrenders = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return { epochId, houseBankroll, reservedPayouts, totalWagered, totalPaid, totalGames, warsTriggered, surrenders, bump };
+}
+
+// Parse War position from account data
+export function parseWarPosition(data: Buffer): WarPosition {
+  let offset = 8; // Skip discriminator
+  const authority = new PublicKey(data.subarray(offset, offset + 32)); offset += 32;
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const roundId = readBigUInt64LE(data, offset); offset += 8;
+  const state = data[offset]; offset += 1;
+  offset += 7; // padding
+  const anteBet = readBigUInt64LE(data, offset); offset += 8;
+  const tieBet = readBigUInt64LE(data, offset); offset += 8;
+  const warBet = readBigUInt64LE(data, offset); offset += 8;
+  const playerCard = data[offset]; offset += 1;
+  const dealerCard = data[offset]; offset += 1;
+  const playerWarCard = data[offset]; offset += 1;
+  const dealerWarCard = data[offset]; offset += 1;
+  offset += 4; // padding
+  const pendingWinnings = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalWon = readBigUInt64LE(data, offset); offset += 8;
+  const totalLost = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return {
+    authority, epochId, roundId, state,
+    anteBet, tieBet, warBet,
+    playerCard, dealerCard, playerWarCard, dealerWarCard,
+    pendingWinnings, totalWagered, totalWon, totalLost, bump
+  };
+}
+
+// ============================================================================
+// THREE CARD POKER TYPES AND FUNCTIONS
+// ============================================================================
+
+export interface ThreeCardGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  reservedPayouts: bigint;
+  totalWagered: bigint;
+  totalPaid: bigint;
+  bump: number;
+}
+
+export interface ThreeCardPosition {
+  authority: PublicKey;
+  epochId: bigint;
+  roundId: bigint;
+  state: number; // 0=Betting, 1=Dealt, 2=Decided, 3=Settled
+  ante: bigint;
+  play: bigint;
+  pairPlus: bigint;
+  playerCards: number[];
+  dealerCards: number[];
+  playerHandRank: number;
+  dealerHandRank: number;
+  dealerQualifies: boolean;
+  pendingWinnings: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  bump: number;
+}
+
+// Three Card hand ranks
+export enum ThreeCardHandRank {
+  HighCard = 0,
+  Pair = 1,
+  Flush = 2,
+  Straight = 3,
+  ThreeOfAKind = 4,
+  StraightFlush = 5,
+  MiniRoyal = 6, // A-K-Q suited
+}
+
+// Three Card states
+export const TCP_STATE_BETTING = 0;
+export const TCP_STATE_DEALT = 1;
+export const TCP_STATE_DECIDED = 2;
+export const TCP_STATE_SETTLED = 3;
+
+// Three Card PDAs
+export function threeCardGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("three_card_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function threeCardPositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("three_card_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function threeCardVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("three_card_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// Parse Three Card game from account data
+export function parseThreeCardGame(data: Buffer): ThreeCardGame {
+  let offset = 8; // Skip discriminator
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const houseBankroll = readBigUInt64LE(data, offset); offset += 8;
+  const reservedPayouts = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalPaid = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return { epochId, houseBankroll, reservedPayouts, totalWagered, totalPaid, bump };
+}
+
+// Parse Three Card position from account data
+export function parseThreeCardPosition(data: Buffer): ThreeCardPosition {
+  let offset = 8; // Skip discriminator
+  const authority = new PublicKey(data.subarray(offset, offset + 32)); offset += 32;
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const roundId = readBigUInt64LE(data, offset); offset += 8;
+  const state = data[offset]; offset += 1;
+  offset += 7; // padding
+  const ante = readBigUInt64LE(data, offset); offset += 8;
+  const play = readBigUInt64LE(data, offset); offset += 8;
+  const pairPlus = readBigUInt64LE(data, offset); offset += 8;
+
+  // Player cards (3 bytes)
+  const playerCards: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    playerCards.push(data[offset]); offset += 1;
+  }
+
+  // Dealer cards (3 bytes)
+  const dealerCards: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    dealerCards.push(data[offset]); offset += 1;
+  }
+
+  offset += 2; // padding
+  const playerHandRank = data[offset]; offset += 1;
+  const dealerHandRank = data[offset]; offset += 1;
+  const dealerQualifies = data[offset] === 1; offset += 1;
+  offset += 5; // padding
+  const pendingWinnings = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalWon = readBigUInt64LE(data, offset); offset += 8;
+  const totalLost = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return {
+    authority, epochId, roundId, state,
+    ante, play, pairPlus,
+    playerCards, dealerCards,
+    playerHandRank, dealerHandRank, dealerQualifies,
+    pendingWinnings, totalWagered, totalWon, totalLost, bump
+  };
+}
+
+// ============================================================================
+// VIDEO POKER TYPES AND FUNCTIONS
+// ============================================================================
+
+export interface VideoPokerGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  reservedPayouts: bigint;
+  totalWagered: bigint;
+  totalPaid: bigint;
+  bump: number;
+}
+
+export interface VideoPokerPosition {
+  authority: PublicKey;
+  epochId: bigint;
+  roundId: bigint;
+  state: number;
+  coins: number; // 1-5
+  betPerCoin: bigint;
+  hand: number[]; // 5 cards
+  cards: number[]; // alias for hand (same data)
+  holdFlags: number; // bitmask
+  handRank: number;
+  pendingWinnings: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  bump: number;
+}
+
+// Video Poker states
+export const VP_STATE_NONE = 0;
+export const VP_STATE_BETTING = 1;
+export const VP_STATE_DEALT = 2;
+export const VP_STATE_HELD = 3;
+export const VP_STATE_SETTLED = 4;
+
+// Video Poker hand ranks
+export enum VideoPokerHandRank {
+  NoPair = 0,
+  JacksOrBetter = 1,
+  TwoPair = 2,
+  ThreeOfAKind = 3,
+  Straight = 4,
+  Flush = 5,
+  FullHouse = 6,
+  FourOfAKind = 7,
+  StraightFlush = 8,
+  RoyalFlush = 9,
+}
+
+// Video Poker PDAs
+export function videoPokerGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("video_poker_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function videoPokerPositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("video_poker_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function videoPokerVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("video_poker_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// Parse Video Poker game from account data
+export function parseVideoPokerGame(data: Buffer): VideoPokerGame {
+  let offset = 8; // Skip discriminator
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const houseBankroll = readBigUInt64LE(data, offset); offset += 8;
+  const reservedPayouts = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalPaid = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return { epochId, houseBankroll, reservedPayouts, totalWagered, totalPaid, bump };
+}
+
+// Parse Video Poker position from account data
+export function parseVideoPokerPosition(data: Buffer): VideoPokerPosition {
+  let offset = 8; // Skip discriminator
+  const authority = new PublicKey(data.subarray(offset, offset + 32)); offset += 32;
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const roundId = readBigUInt64LE(data, offset); offset += 8;
+  const state = data[offset]; offset += 1;
+  const coins = data[offset]; offset += 1;
+  offset += 6; // padding
+  const betPerCoin = readBigUInt64LE(data, offset); offset += 8;
+
+  // Hand (5 cards)
+  const hand: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    hand.push(data[offset]); offset += 1;
+  }
+
+  const holdFlags = data[offset]; offset += 1;
+  const handRank = data[offset]; offset += 1;
+  offset += 1; // padding
+  const pendingWinnings = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalWon = readBigUInt64LE(data, offset); offset += 8;
+  const totalLost = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return {
+    authority, epochId, roundId, state,
+    coins, betPerCoin, hand, cards: hand, holdFlags, handRank,
+    pendingWinnings, totalWagered, totalWon, totalLost, bump
+  };
+}
+
+// ============================================================================
+// SIC BO TYPES AND FUNCTIONS
+// ============================================================================
+
+export interface SicBoGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  reservedPayouts: bigint;
+  totalWagered: bigint;
+  totalPaid: bigint;
+  lastDice: number[]; // 3 dice
+  bump: number;
+}
+
+export interface SicBoPosition {
+  authority: PublicKey;
+  epochId: bigint;
+  roundId: bigint;
+  // Bet fields - primary names
+  small: bigint;
+  big: bigint;
+  odd: bigint;
+  even: bigint;
+  specificTriples: bigint[]; // 6 elements (1-6)
+  anyTriple: bigint;
+  specificDoubles: bigint[]; // 6 elements (1-6)
+  combinations: bigint[]; // 15 elements
+  singles: bigint[]; // 6 elements (1-6)
+  sums: bigint[]; // 14 elements (4-17)
+  pendingWinnings: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  bump: number;
+}
+
+// Sic Bo bet types
+export enum SicBoBetType {
+  Small = 0,
+  Big = 1,
+  Odd = 2,
+  Even = 3,
+  SpecificTriple = 4,
+  AnyTriple = 5,
+  SpecificDouble = 6,
+  Combination = 7,
+  Single = 8,
+  Sum = 9,
+}
+
+// Sic Bo PDAs
+export function sicboGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("sicbo_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function sicboPositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("sicbo_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function sicboVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("sicbo_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// Parse Sic Bo game from account data
+export function parseSicBoGame(data: Buffer): SicBoGame {
+  let offset = 8; // Skip discriminator
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const houseBankroll = readBigUInt64LE(data, offset); offset += 8;
+  const reservedPayouts = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalPaid = readBigUInt64LE(data, offset); offset += 8;
+
+  // Last dice (3 bytes)
+  const lastDice: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    lastDice.push(data[offset]); offset += 1;
+  }
+  const bump = data[offset];
+
+  return { epochId, houseBankroll, reservedPayouts, totalWagered, totalPaid, lastDice, bump };
+}
+
+// Parse Sic Bo position from account data
+export function parseSicBoPosition(data: Buffer): SicBoPosition {
+  let offset = 8; // Skip discriminator
+  const authority = new PublicKey(data.subarray(offset, offset + 32)); offset += 32;
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const roundId = readBigUInt64LE(data, offset); offset += 8;
+
+  const small = readBigUInt64LE(data, offset); offset += 8;
+  const big = readBigUInt64LE(data, offset); offset += 8;
+  const odd = readBigUInt64LE(data, offset); offset += 8;
+  const even = readBigUInt64LE(data, offset); offset += 8;
+
+  const specificTriples: bigint[] = [];
+  for (let i = 0; i < 6; i++) {
+    specificTriples.push(readBigUInt64LE(data, offset)); offset += 8;
+  }
+
+  const anyTriple = readBigUInt64LE(data, offset); offset += 8;
+
+  const specificDoubles: bigint[] = [];
+  for (let i = 0; i < 6; i++) {
+    specificDoubles.push(readBigUInt64LE(data, offset)); offset += 8;
+  }
+
+  const combinations: bigint[] = [];
+  for (let i = 0; i < 15; i++) {
+    combinations.push(readBigUInt64LE(data, offset)); offset += 8;
+  }
+
+  const singles: bigint[] = [];
+  for (let i = 0; i < 6; i++) {
+    singles.push(readBigUInt64LE(data, offset)); offset += 8;
+  }
+
+  const sums: bigint[] = [];
+  for (let i = 0; i < 14; i++) {
+    sums.push(readBigUInt64LE(data, offset)); offset += 8;
+  }
+
+  const pendingWinnings = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalWon = readBigUInt64LE(data, offset); offset += 8;
+  const totalLost = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return {
+    authority, epochId, roundId,
+    small, big, odd, even,
+    specificTriples, anyTriple, specificDoubles,
+    combinations, singles, sums,
+    pendingWinnings, totalWagered, totalWon, totalLost, bump
+  };
+}
+
+// Get Sic Bo bet display info
+export function getSicBoBetDisplayInfo(betType: SicBoBetType, betIndex?: number): { name: string; payout: string } {
+  switch (betType) {
+    case SicBoBetType.Small: return { name: "Small (4-10)", payout: "1:1" };
+    case SicBoBetType.Big: return { name: "Big (11-17)", payout: "1:1" };
+    case SicBoBetType.Odd: return { name: "Odd", payout: "1:1" };
+    case SicBoBetType.Even: return { name: "Even", payout: "1:1" };
+    case SicBoBetType.SpecificTriple: return { name: `Triple ${betIndex !== undefined ? betIndex + 1 : ""}`, payout: "180:1" };
+    case SicBoBetType.AnyTriple: return { name: "Any Triple", payout: "30:1" };
+    case SicBoBetType.SpecificDouble: return { name: `Double ${betIndex !== undefined ? betIndex + 1 : ""}`, payout: "10:1" };
+    case SicBoBetType.Combination: return { name: "Combination", payout: "6:1" };
+    case SicBoBetType.Single: return { name: `Single ${betIndex !== undefined ? betIndex + 1 : ""}`, payout: "1:1 to 3:1" };
+    case SicBoBetType.Sum: return { name: `Sum ${betIndex !== undefined ? betIndex + 4 : ""}`, payout: "varies" };
+    default: return { name: "Unknown", payout: "-" };
+  }
+}
+
+// ============================================================================
+// ULTIMATE TEXAS HOLD'EM TYPES AND FUNCTIONS
+// ============================================================================
+
+export interface UTHGame {
+  epochId: bigint;
+  houseBankroll: bigint;
+  reservedPayouts: bigint;
+  totalWagered: bigint;
+  totalPaid: bigint;
+  bump: number;
+}
+
+export interface UTHPosition {
+  authority: PublicKey;
+  epochId: bigint;
+  roundId: bigint;
+  phase: number; // UTHPhase
+  ante: bigint;
+  blind: bigint;
+  trips: bigint;
+  play: bigint;
+  playerCards: number[]; // 2 cards
+  communityCards: number[]; // 5 cards
+  dealerCards: number[]; // 2 cards
+  playerHandRank: number;
+  dealerHandRank: number;
+  dealerQualifies: boolean;
+  pendingWinnings: bigint;
+  totalWagered: bigint;
+  totalWon: bigint;
+  totalLost: bigint;
+  bump: number;
+}
+
+// UTH phases
+export enum UTHPhase {
+  Betting = 0,
+  Preflop = 1,
+  Flop = 2,
+  River = 3,
+  Showdown = 4,
+  Settled = 5,
+}
+
+// UTH hand ranks (standard poker)
+export enum UTHHandRank {
+  HighCard = 0,
+  Pair = 1,
+  TwoPair = 2,
+  ThreeOfAKind = 3,
+  Straight = 4,
+  Flush = 5,
+  FullHouse = 6,
+  FourOfAKind = 7,
+  StraightFlush = 8,
+  RoyalFlush = 9,
+}
+
+// UTH PDAs
+export function uthGamePDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("uth_game")],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function uthPositionPDA(authority: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("uth_position"), authority.toBuffer()],
+    ORE_PROGRAM_ID
+  );
+}
+
+export function uthVaultPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("uth_vault")],
+    ORE_PROGRAM_ID
+  );
+}
+
+// Parse UTH game from account data
+export function parseUTHGame(data: Buffer): UTHGame {
+  let offset = 8; // Skip discriminator
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const houseBankroll = readBigUInt64LE(data, offset); offset += 8;
+  const reservedPayouts = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalPaid = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return { epochId, houseBankroll, reservedPayouts, totalWagered, totalPaid, bump };
+}
+
+// Parse UTH position from account data
+export function parseUTHPosition(data: Buffer): UTHPosition {
+  let offset = 8; // Skip discriminator
+  const authority = new PublicKey(data.subarray(offset, offset + 32)); offset += 32;
+  const epochId = readBigUInt64LE(data, offset); offset += 8;
+  const roundId = readBigUInt64LE(data, offset); offset += 8;
+  const phase = data[offset]; offset += 1;
+  offset += 7; // padding
+  const ante = readBigUInt64LE(data, offset); offset += 8;
+  const blind = readBigUInt64LE(data, offset); offset += 8;
+  const trips = readBigUInt64LE(data, offset); offset += 8;
+  const play = readBigUInt64LE(data, offset); offset += 8;
+
+  // Player cards (2 bytes)
+  const playerCards: number[] = [];
+  for (let i = 0; i < 2; i++) {
+    playerCards.push(data[offset]); offset += 1;
+  }
+
+  // Community cards (5 bytes)
+  const communityCards: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    communityCards.push(data[offset]); offset += 1;
+  }
+
+  // Dealer cards (2 bytes)
+  const dealerCards: number[] = [];
+  for (let i = 0; i < 2; i++) {
+    dealerCards.push(data[offset]); offset += 1;
+  }
+
+  offset += 5; // padding
+  const playerHandRank = data[offset]; offset += 1;
+  const dealerHandRank = data[offset]; offset += 1;
+  const dealerQualifies = data[offset] === 1; offset += 1;
+  offset += 4; // padding
+  const pendingWinnings = readBigUInt64LE(data, offset); offset += 8;
+  const totalWagered = readBigUInt64LE(data, offset); offset += 8;
+  const totalWon = readBigUInt64LE(data, offset); offset += 8;
+  const totalLost = readBigUInt64LE(data, offset); offset += 8;
+  const bump = data[offset];
+
+  return {
+    authority, epochId, roundId, phase,
+    ante, blind, trips, play,
+    playerCards, communityCards, dealerCards,
+    playerHandRank, dealerHandRank, dealerQualifies,
+    pendingWinnings, totalWagered, totalWon, totalLost, bump
+  };
+}
+
+// Format card for display (card is 0-51: suit*13 + rank)
+export function formatUTHCard(card: number): string {
+  if (card === 255) return "??";
+  const suits = ["♠", "♥", "♦", "♣"];
+  const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+  const suit = Math.floor(card / 13);
+  const rank = card % 13;
+  return `${ranks[rank]}${suits[suit]}`;
+}
+
+// Get UTH hand rank name
+export function getUTHHandRankName(rank: number): string {
+  const names = [
+    "High Card",
+    "Pair",
+    "Two Pair",
+    "Three of a Kind",
+    "Straight",
+    "Flush",
+    "Full House",
+    "Four of a Kind",
+    "Straight Flush",
+    "Royal Flush",
+  ];
+  return names[rank] ?? "Unknown";
+}
+
+// Get UTH phase name
+export function getUTHPhaseName(phase: number): string {
+  switch (phase) {
+    case UTHPhase.Betting: return "Betting";
+    case UTHPhase.Preflop: return "Preflop";
+    case UTHPhase.Flop: return "Flop";
+    case UTHPhase.River: return "River";
+    case UTHPhase.Showdown: return "Showdown";
+    case UTHPhase.Settled: return "Settled";
+    default: return "Unknown";
+  }
+}
+
+// ============================================================================
 // RE-EXPORTS
 // ============================================================================
 
