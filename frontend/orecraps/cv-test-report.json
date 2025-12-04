@@ -1,0 +1,93 @@
+{
+  "timestamp": "2025-12-02T15:12:14.400Z",
+  "player": "41sVoxYGiNyDdUb2Uit12WkGQYSyhwpNZHpzLanS8rhi",
+  "balances": {
+    "SOL": "8.0000",
+    "RNG": "89.9274",
+    "CRAP": "0.4500",
+    "CARAT": "1.0000",
+    "BJ": "0.9000",
+    "ROUL": "1.1000",
+    "WAR": "1.0000",
+    "SICO": "0.9000",
+    "TCP": "1.0000",
+    "VPK": "1.0000",
+    "UTH": "1.0000"
+  },
+  "exchangePool": {
+    "solReserve": "21.9800",
+    "rngReserve": "909.9181",
+    "totalFees": "0.020000"
+  },
+  "testResults": {
+    "passed": 13,
+    "failed": 0,
+    "tests": [
+      {
+        "name": "Swap SOL → RNG",
+        "passed": true,
+        "details": "2 SOL → 90.08 RNG"
+      },
+      {
+        "name": "Exchange fee applied (1%)",
+        "passed": true,
+        "details": "Fees collected: 0.0200 SOL"
+      },
+      {
+        "name": "Deploy RNG to mining squares",
+        "passed": true,
+        "details": "Deployed 0.60 RNG to 6 squares"
+      },
+      {
+        "name": "Set dice prediction",
+        "passed": true,
+        "details": "Prediction: 7"
+      },
+      {
+        "name": "Round settled",
+        "passed": true,
+        "details": "Dice: 1 + 1 = 2, Winning Square: 0"
+      },
+      {
+        "name": "Player received multi-token rewards",
+        "passed": true,
+        "details": "9 game tokens: 1.00 each"
+      },
+      {
+        "name": "All 9 game tokens distributed",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "name": "Craps Pass Line bet",
+        "passed": true,
+        "details": "Roll: 4 + 5 = 9, LOST"
+      },
+      {
+        "name": "Blackjack hand",
+        "passed": true,
+        "details": "Player: 15, Dealer: 20, LOST"
+      },
+      {
+        "name": "Roulette Red bet",
+        "passed": true,
+        "details": "Ball landed on: 30, WON"
+      },
+      {
+        "name": "Sic Bo Small bet",
+        "passed": true,
+        "details": "Dice: 4-3-4 = 11, LOST"
+      },
+      {
+        "name": "Swap CRAP → RNG",
+        "passed": true,
+        "details": "0.4500 CRAP → 0.4455 RNG"
+      },
+      {
+        "name": "1% fee applied on game token swap",
+        "passed": true,
+        "details": "Fee: 0.004500 tokens"
+      }
+    ]
+  }
+}
