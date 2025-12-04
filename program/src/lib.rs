@@ -57,6 +57,10 @@ pub fn process_instruction(
         OreInstruction::SettleCraps => process_settle_craps(accounts, data)?,
         OreInstruction::ClaimCrapsWinnings => process_claim_craps_winnings(accounts, data)?,
         OreInstruction::FundCrapsHouse => process_fund_craps_house(accounts, data)?,
+        // SECURITY FIX 2.1: Force settle for reserved payout DoS prevention
+        OreInstruction::ForceSettleCraps => process_force_settle_craps(accounts, data)?,
+        // SECURITY FIX 2.2: Claim unpaid debt from insolvency
+        OreInstruction::ClaimCrapsDebt => process_claim_craps_debt(accounts, data)?,
 
         // Migration
         OreInstruction::MigrateRound => process_migrate_round(accounts, data)?,

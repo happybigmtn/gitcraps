@@ -1,7 +1,9 @@
 use ore_api::error::OreError;
 use ore_api::prelude::*;
+use solana_program::clock::Clock;
 use solana_program::log::sol_log;
 use solana_program::program::invoke;
+use solana_program::sysvar::Sysvar;
 use steel::*;
 
 use super::utils::{point_to_index, sum_to_index, is_valid_yes_no_sum};
@@ -179,10 +181,11 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
     // 4: signer_crap_ata - signer's CRAP token account
     // 5: vault_crap_ata - craps vault's CRAP token account
     // 6: crap_mint - CRAP token mint
-    // 7: system_program
-    // 8: token_program
-    // 9: associated_token_program
-    let [signer_info, craps_game_info, craps_position_info, craps_vault_info, signer_crap_ata, vault_crap_ata, crap_mint, system_program, token_program, associated_token_program] = accounts else {
+    // 7: board_info - board PDA for timing validation
+    // 8: system_program
+    // 9: token_program
+    // 10: associated_token_program
+    let [signer_info, craps_game_info, craps_position_info, craps_vault_info, signer_crap_ata, vault_crap_ata, crap_mint, board_info, system_program, token_program, associated_token_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -197,9 +200,23 @@ pub fn process_place_craps_bet(accounts: &[AccountInfo<'_>], data: &[u8]) -> Pro
     signer_crap_ata.is_writable()?;
     vault_crap_ata.is_writable()?;
     crap_mint.has_address(&CRAP_MINT_ADDRESS)?;
+    board_info.has_seeds(&[BOARD], &ore_api::ID)?;
     system_program.is_program(&system_program::ID)?;
     token_program.is_program(&spl_token::ID)?;
     associated_token_program.is_program(&spl_associated_token_account::ID)?;
+
+    // SECURITY FIX 1.1: Validate bet is placed within active round window
+    // This prevents "late betting" where users bet after knowing the round result
+    let clock = Clock::get()?;
+    let board = board_info.as_account::<Board>(&ore_api::ID)?;
+    if clock.slot > board.end_slot {
+        sol_log("ERROR: Round has ended - cannot place bets after round ends");
+        return Err(OreError::RoundExpired.into());
+    }
+    if clock.slot < board.start_slot {
+        sol_log("ERROR: Round has not started yet");
+        return Err(OreError::RoundNotActive.into());
+    }
 
     // Load or create craps game account.
     let craps_game = if craps_game_info.data_is_empty() {

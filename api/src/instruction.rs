@@ -37,6 +37,13 @@ pub enum OreInstruction {
     ClaimCrapsWinnings = 25,
     FundCrapsHouse = 26,
 
+    // SECURITY FIX 2.1: Force settle allows anyone to release reserved payouts
+    // for positions that have not been settled within the expiry window.
+    ForceSettleCraps = 29,
+
+    // SECURITY FIX 2.2: Claim unpaid debt when house is funded again
+    ClaimCrapsDebt = 30,
+
     // Migration
     MigrateRound = 27,
     MigrateMiner = 28,
@@ -302,10 +309,27 @@ pub struct FundCrapsHouse {
     pub amount: [u8; 8],
 }
 
+/// SECURITY FIX 2.1: Force settle a craps position that hasn't been settled in time.
+/// This allows anyone to trigger settlement for expired positions, releasing reserved payouts.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ForceSettleCraps {
+    /// The winning square from the round (must match round's actual result).
+    pub winning_square: [u8; 8],
+}
+
+/// SECURITY FIX 2.2: Claim unpaid debt from previous insolvency.
+/// Called by position owner when house has been re-funded.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ClaimCrapsDebt {}
+
 instruction!(OreInstruction, PlaceCrapsBet);
 instruction!(OreInstruction, SettleCraps);
 instruction!(OreInstruction, ClaimCrapsWinnings);
 instruction!(OreInstruction, FundCrapsHouse);
+instruction!(OreInstruction, ForceSettleCraps);
+instruction!(OreInstruction, ClaimCrapsDebt);
 instruction!(OreInstruction, MigrateRound);
 
 /// Migrate a Round account to the new struct size (admin only).

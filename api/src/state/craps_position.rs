@@ -216,6 +216,12 @@ pub struct CrapsPosition {
 
     /// Last round this position was updated.
     pub last_updated_round: u64,
+
+    // ==================== SECURITY FIX 2.2: DEBT TRACKING ====================
+    /// Unpaid debt owed to this user when house was insolvent during settlement.
+    /// This allows settlement to complete even when house can't pay, avoiding stuck state.
+    /// User can claim this debt later when house is funded.
+    pub unpaid_debt: u64,
 }
 
 impl CrapsPosition {

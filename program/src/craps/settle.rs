@@ -8,8 +8,9 @@ use super::utils::{
     is_field_winner, hardway_loses, calculate_payout,
 };
 
-/// Helper to calculate and release reserved payout for a settled bet.
-/// Uses saturating_sub to safely handle edge cases.
+/// SECURITY FIX 3.2: Helper to calculate and release reserved payout for a settled bet.
+/// Uses checked_sub to detect accounting errors. If reserved_payouts would go negative,
+/// this indicates a critical bug in the reservation system - we log a warning and clamp to 0.
 fn release_reserved_payout(craps_game: &mut CrapsGame, bet_amount: u64, payout_num: u64, payout_den: u64) {
     // Calculate the max payout that was reserved (bet + winnings)
     let payout = bet_amount
@@ -17,8 +18,18 @@ fn release_reserved_payout(craps_game: &mut CrapsGame, bet_amount: u64, payout_n
         .saturating_div(payout_den.max(1)); // Avoid division by zero
     let max_payout = bet_amount.saturating_add(payout);
 
-    // Release the reserved amount
-    craps_game.reserved_payouts = craps_game.reserved_payouts.saturating_sub(max_payout);
+    // Release the reserved amount with checked_sub to detect accounting errors
+    match craps_game.reserved_payouts.checked_sub(max_payout) {
+        Some(new_reserved) => {
+            craps_game.reserved_payouts = new_reserved;
+        }
+        None => {
+            // This indicates a critical accounting bug - reserved_payouts is less than expected
+            // Log warning but don't fail transaction to avoid stuck state
+            sol_log("WARNING: reserved_payouts underflow detected - possible accounting bug");
+            craps_game.reserved_payouts = 0;
+        }
+    }
 }
 
 /// Settles craps bets for a user after a round is complete.
@@ -160,10 +171,13 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
         return Ok(());
     }
 
-    // Check if already settled for this round.
-    // Use > instead of >= to allow first settlement on round 0
-    // (new positions have last_updated_round = 0, round.id starts at 0)
-    if craps_position.last_updated_round > round.id {
+    // SECURITY FIX 1.2: Check if already settled for this round.
+    // Must use >= to prevent re-settling the same round multiple times.
+    // This prevents the attack where a user places a late bet and settles repeatedly.
+    // Special case: Allow first settlement when last_updated_round == 0 and round.id == 0
+    // (new positions start with last_updated_round = 0, and first round.id is also 0)
+    let is_first_settlement = craps_position.last_updated_round == 0 && round.id == 0;
+    if !is_first_settlement && craps_position.last_updated_round >= round.id {
         sol_log("Already settled for this round");
         return Err(ProgramError::Custom(1)); // Error code 1: ALREADY_SETTLED
     }
@@ -1246,20 +1260,49 @@ pub fn process_settle_craps(accounts: &[AccountInfo<'_>], data: &[u8]) -> Progra
     craps_game.total_collected = craps_game.total_collected
         .checked_add(total_lost)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    // SECURITY FIX 2.2: Handle insolvency with debt tracking instead of failing
     // House bankroll is reduced by net winnings.
     if total_winnings > total_lost {
         let net_payout = total_winnings
             .checked_sub(total_lost)
             .ok_or(ProgramError::ArithmeticOverflow)?;
-        // MUST fail transaction if house cannot pay
+
         if net_payout > 0 {
-            if craps_game.house_bankroll < net_payout {
-                sol_log("ERROR: Insufficient house bankroll for payout");
-                return Err(ProgramError::InsufficientFunds);
+            if craps_game.house_bankroll >= net_payout {
+                // House can pay - process normally
+                craps_game.house_bankroll = craps_game.house_bankroll
+                    .checked_sub(net_payout)
+                    .ok_or(ProgramError::InsufficientFunds)?;
+            } else {
+                // SECURITY FIX 2.2: House is insolvent - track debt instead of failing
+                // This prevents user accounts from being stuck in a winning state they cannot exit
+                let payable_amount = craps_game.house_bankroll;
+                let debt_amount = net_payout
+                    .checked_sub(payable_amount)
+                    .ok_or(ProgramError::ArithmeticOverflow)?;
+
+                // Pay what we can
+                craps_game.house_bankroll = 0;
+
+                // Track the remaining debt owed to user
+                craps_position.unpaid_debt = craps_position.unpaid_debt
+                    .checked_add(debt_amount)
+                    .ok_or(ProgramError::ArithmeticOverflow)?;
+
+                // Adjust pending_winnings to reflect only what can be paid now
+                // (unpaid portion is tracked separately in unpaid_debt)
+                if craps_position.pending_winnings >= debt_amount {
+                    craps_position.pending_winnings = craps_position.pending_winnings
+                        .checked_sub(debt_amount)
+                        .ok_or(ProgramError::ArithmeticOverflow)?;
+                }
+
+                sol_log(&format!(
+                    "WARNING: House insolvent. Paid: {}, Debt recorded: {}",
+                    payable_amount, debt_amount
+                ).as_str());
             }
-            craps_game.house_bankroll = craps_game.house_bankroll
-                .checked_sub(net_payout)
-                .ok_or(ProgramError::InsufficientFunds)?;
         }
     } else {
         let net_gain = total_lost
