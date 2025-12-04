@@ -159,13 +159,15 @@ export function DeployPanel({
       toast.info("Preparing transaction...");
 
       // Convert RNG to base units (9 decimals)
-      const amountBaseUnits = BigInt(Math.floor(totalAmount * Number(ONE_RNG)));
+      // IMPORTANT: On-chain Deploy expects PER-SQUARE amount, not total amount.
+      // The program multiplies by selected square count internally.
+      const amountPerSquareBaseUnits = BigInt(Math.floor(deployAmount * Number(ONE_RNG)));
 
       // Build deploy instruction
       const deployIx = createDeployInstruction(
         publicKey,
         publicKey, // authority is same as signer
-        amountBaseUnits,
+        amountPerSquareBaseUnits,
         board.roundId,
         selectedSquares
       );
@@ -209,7 +211,7 @@ export function DeployPanel({
       });
 
       toast.success(
-        `Deployed ${formatRng(amountBaseUnits)} RNG to ${selectedCount} squares!`
+        `Deployed ${formatRng(amountPerSquareBaseUnits)} RNG × ${selectedCount} squares = ${totalAmount.toFixed(2)} RNG!`
       );
       onDeploy?.();
     } catch (error) {
